@@ -34,10 +34,37 @@ Twilio Inbound Call (Phone)
    ```bash
    python test_agent.py
    ```
-5. Start the server:
+5. Start the server locally:
    ```bash
-   python app.py
+   python -m uvicorn app:app --port 8000
    ```
+
+## Production Docker Deployment (VPS)
+
+1. Clone repository to your VPS:
+   ```bash
+   git clone <your-repo-url>
+   cd "Voice Ai agent (Liquid Ai)"
+   ```
+2. Configure `.env` on VPS:
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+3. Start container with Docker Compose:
+   ```bash
+   docker compose up -d --build
+   ```
+4. Check container status & logs:
+   ```bash
+   docker compose ps
+   docker compose logs -f
+   ```
+
+## Web Voice Simulator
+
+Open in your browser to test voice, STT, and measure exact millisecond latency:
+`http://localhost:8000/simulator`
 
 ## Twilio Configuration
 
