@@ -209,31 +209,51 @@ async def run_call():
                                 print(f"Hannah: {content}")
 
                         elif msg_type == "FunctionCallRequest":
-                            fn_name = data.get("function_name")
-                            fn_call_id = data.get("function_call_id") or data.get("call_id")
-                            fn_input = data.get("input") or {}
-                            if isinstance(fn_input, str):
-                                try:
-                                    fn_input = json.loads(fn_input)
-                                except Exception:
-                                    fn_input = {}
-                            print(f"\n[Clinic Webhook Triggered: {fn_name}({json.dumps(fn_input)})]")
-                            result = execute_tool(fn_name, fn_input)
-                            print(f"[Clinic Webhook Finished: {json.dumps(result)}]\n")
-                            if fn_call_id:
+                            # Deepgram official spec: "functions": [{"id": ..., "name": ..., "arguments": ...}]
+                            fn_list = data.get("functions")
+                            if not fn_list:
+                                fn_list = [{
+                                    "id": data.get("id") or data.get("function_call_id") or data.get("call_id"),
+                                    "name": data.get("name") or data.get("function_name"),
+                                    "arguments": data.get("arguments") or data.get("input") or {}
+                                }]
+
+                            for item in fn_list:
+                                fn_id = item.get("id")
+                                fn_name = item.get("name")
+                                raw_args = item.get("arguments") or {}
+                                if isinstance(raw_args, str):
+                                    try:
+                                        fn_args = json.loads(raw_args)
+                                    except Exception:
+                                        fn_args = {}
+                                else:
+                                    fn_args = raw_args
+
+                                print(f"\n[Clinic Webhook Triggered: {fn_name}({json.dumps(fn_args)})]")
+                                result = execute_tool(fn_name, fn_args)
+                                print(f"[Clinic Webhook Finished: {json.dumps(result)}]\n")
+
+                                # Deepgram official spec: type=FunctionCallResponse, id, name, content
                                 resp = {
                                     "type": "FunctionCallResponse",
-                                    "function_call_id": fn_call_id,
-                                    "output": json.dumps(result)
+                                    "name": fn_name,
+                                    "content": json.dumps(result)
                                 }
+                                if fn_id:
+                                    resp["id"] = fn_id
                                 await ws.send(json.dumps(resp))
-                            if fn_name == "end_after_reception":
-                                await asyncio.sleep(2.5)
-                                stop_event.set()
-                                break
+
+                                if fn_name in ("end_after_reception", "end_call"):
+                                    await asyncio.sleep(2.5)
+                                    stop_event.set()
+                                    break
+
+                        elif msg_type == "FunctionCallCancelled":
+                            print("[Notice: Speculative tool call cancelled by caller speech]")
 
                         elif msg_type == "FunctionCallResponse":
-                            print(f"[Clinic Webhook Response Acknowledged]\n")
+                            print(f"[Clinic Webhook Response Acknowledged by Deepgram]\n")
 
                         elif msg_type == "UserStartedSpeaking":
                             # Barge-in detected: caller started speaking
