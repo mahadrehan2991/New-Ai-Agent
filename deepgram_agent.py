@@ -150,7 +150,9 @@ async def run_call():
     print("Press Ctrl+C to hang up.")
     print("=" * 60 + "\n")
 
-    connect_kwargs = {"additional_headers": headers} if hasattr(websockets, "asyncio") else {"extra_headers": headers}
+    import inspect
+    sig = inspect.signature(websockets.connect)
+    connect_kwargs = {"additional_headers": headers} if "additional_headers" in sig.parameters else {"extra_headers": headers}
 
     stop_event = asyncio.Event()
 
