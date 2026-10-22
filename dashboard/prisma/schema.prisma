@@ -1,0 +1,92 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Patient {
+  id           String        @id @default(cuid())
+  firstName    String
+  lastName     String
+  phone        String        @unique
+  patientType  String        @default("new") // "new" | "existing"
+  firstSeenAt  DateTime      @default(now())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  calls        Call[]
+  complaints   Complaint[]
+  appointments Appointment[]
+}
+
+model Call {
+  id              String           @id @default(cuid())
+  startedAt       DateTime         @default(now())
+  endedAt         DateTime?
+  durationSeconds Int              @default(0)
+  callerPhone     String
+  status          String           @default("completed") // "completed" | "abandoned" | "transferred" | "failed"
+  outcome         String           @default("booked") // "booked" | "no_booking" | "existing_lookup" | "out_of_scope"
+  patientId       String?
+  patient         Patient?         @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  summary         String?
+  sentiment       String           @default("neutral") // "positive" | "neutral" | "negative"
+  recordingUrl    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  transcriptTurns TranscriptTurn[]
+  complaints      Complaint[]
+  appointments    Appointment[]
+  toolEvents      ToolEvent[]
+}
+
+model TranscriptTurn {
+  id        String   @id @default(cuid())
+  callId    String
+  call      Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  role      String   // "agent" | "caller"
+  text      String
+  timestamp DateTime @default(now())
+}
+
+model Complaint {
+  id          String   @id @default(cuid())
+  callId      String
+  call        Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  bodyArea    String   // "lower back" | "neck" | "shoulder" | "knee" | "hip" | "other"
+  description String
+  severity    Int?     // 1 to 5
+  createdAt   DateTime @default(now())
+}
+
+model Appointment {
+  id                     String   @id @default(cuid())
+  callId                 String?
+  call                   Call?    @relation(fields: [callId], references: [id], onDelete: SetNull)
+  patientId              String
+  patient                Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  startsAt               DateTime
+  type                   String   @default("initial") // "initial" | "followup"
+  insuranceDirectBilling Boolean  @default(false)
+  status                 String   @default("booked") // "booked" | "cancelled" | "completed"
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model ToolEvent {
+  id         String   @id @default(cuid())
+  callId     String
+  call       Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  toolName   String
+  arguments  String   // JSON string
+  result     String   // JSON string
+  durationMs Int      @default(0)
+  success    Boolean  @default(true)
+  timestamp  DateTime @default(now())
+}
