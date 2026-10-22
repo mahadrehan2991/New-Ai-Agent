@@ -6,6 +6,7 @@ import websockets
 import pyaudio
 from dotenv import load_dotenv
 from prompt import get_system_prompt, OPENING_GREETING
+from tools import execute_tool
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -45,13 +46,13 @@ def build_agent_settings() -> dict:
                 "prompt": get_system_prompt(),
                 "functions": [
                     {
-                        "name": "check_clinic_availability",
-                        "description": "Checks clinic availability for an appointment date and time. Call this ONLY after the caller states pain and requests a date/time.",
+                        "name": "vapi-check-availability",
+                        "description": "Checks clinic availability for an appointment date and time. Call this ONLY after the caller states pain and requests a specific date and time.",
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "appointment_date": {"type": "string", "description": "Date in YYYY-MM-DD"},
-                                "appointment_time": {"type": "string", "description": "Time (e.g. 10:30 AM, 3:00 PM)"}
+                                "appointment_date": {"type": "string", "description": "Date in YYYY-MM-DD format."},
+                                "appointment_time": {"type": "string", "description": "Requested time within clinic hours (e.g. '10:30 AM', '3:00 PM')."}
                             },
                             "required": ["appointment_date", "appointment_time"]
                         },
@@ -62,12 +63,12 @@ def build_agent_settings() -> dict:
                         }
                     },
                     {
-                        "name": "lookup_patient",
-                        "description": "Looks up returning patient record using digits-only phone.",
+                        "name": "Vapi-Patient-Lookup",
+                        "description": "Looks up returning patient record using digits-only phone number.",
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "phone": {"type": "string", "description": "Digits-only phone number"}
+                                "phone": {"type": "string", "description": "Digits-only callback phone number."}
                             },
                             "required": ["phone"]
                         },
@@ -78,18 +79,18 @@ def build_agent_settings() -> dict:
                         }
                     },
                     {
-                        "name": "save_clinic_appointment",
+                        "name": "Vapi-save-appointment",
                         "description": "Saves booked appointment in clinic system after slot and insurance confirmation.",
                         "parameters": {
                             "type": "object",
                             "properties": {
-                                "patient_name": {"type": "string"},
-                                "phone": {"type": "string"},
-                                "area_of_concern": {"type": "string"},
-                                "appointment_day": {"type": "string"},
-                                "appointment_date": {"type": "string"},
-                                "appointment_time": {"type": "string"},
-                                "insurance_company": {"type": "string"}
+                                "patient_name": {"type": "string", "description": "Full name of patient"},
+                                "phone": {"type": "string", "description": "Digits-only phone"},
+                                "area_of_concern": {"type": "string", "description": "Pain or injury area"},
+                                "appointment_day": {"type": "string", "description": "Day of week"},
+                                "appointment_date": {"type": "string", "description": "Date in YYYY-MM-DD"},
+                                "appointment_time": {"type": "string", "description": "Confirmed time"},
+                                "insurance_company": {"type": "string", "description": "Insurance provider or 'None'"}
                             },
                             "required": [
                                 "patient_name", "phone", "area_of_concern",
@@ -101,6 +102,14 @@ def build_agent_settings() -> dict:
                             "url": N8N_SAVE_URL,
                             "method": "POST",
                             "headers": {"Content-Type": "application/json"}
+                        }
+                    },
+                    {
+                        "name": "end_after_reception",
+                        "description": "Ends the phone call after the final closing statement has been spoken.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
                         }
                     }
                 ]
@@ -201,11 +210,30 @@ async def run_call():
 
                         elif msg_type == "FunctionCallRequest":
                             fn_name = data.get("function_name")
-                            fn_input = data.get("input")
-                            print(f"\n[Clinic Webhook Executing: {fn_name}({fn_input})]")
+                            fn_call_id = data.get("function_call_id") or data.get("call_id")
+                            fn_input = data.get("input") or {}
+                            if isinstance(fn_input, str):
+                                try:
+                                    fn_input = json.loads(fn_input)
+                                except Exception:
+                                    fn_input = {}
+                            print(f"\n[Clinic Webhook Triggered: {fn_name}({json.dumps(fn_input)})]")
+                            result = execute_tool(fn_name, fn_input)
+                            print(f"[Clinic Webhook Finished: {json.dumps(result)}]\n")
+                            if fn_call_id:
+                                resp = {
+                                    "type": "FunctionCallResponse",
+                                    "function_call_id": fn_call_id,
+                                    "output": json.dumps(result)
+                                }
+                                await ws.send(json.dumps(resp))
+                            if fn_name == "end_after_reception":
+                                await asyncio.sleep(2.5)
+                                stop_event.set()
+                                break
 
                         elif msg_type == "FunctionCallResponse":
-                            print(f"[Clinic Webhook Done]\n")
+                            print(f"[Clinic Webhook Response Acknowledged]\n")
 
                         elif msg_type == "UserStartedSpeaking":
                             # Barge-in detected: caller started speaking

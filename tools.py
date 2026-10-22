@@ -96,18 +96,18 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
     """Executes the requested tool and returns the result dictionary."""
     logger.info("Executing tool: %s with args: %s", name, args_dict)
 
-    if name == "vapi-check-availability" and not args_dict.get("appointment_time", "").strip():
+    if name in ("vapi-check-availability", "check_clinic_availability") and not args_dict.get("appointment_time", "").strip():
         return {"results": [{"name": name, "toolCallId": "local-call", "result": "No time given yet. Ask the caller what time they prefer."}]}
 
     def _finish(res: dict) -> dict:
         if state is not None:
-            if name == "vapi-check-availability" and args_dict.get("appointment_time"):
+            if name in ("vapi-check-availability", "check_clinic_availability") and args_dict.get("appointment_time"):
                 state["preferred_time"] = f"{args_dict.get('appointment_date', '')} {args_dict.get('appointment_time', '')}".strip()
-            elif name == "Vapi-Patient-Lookup" and isinstance(res, dict):
+            elif name in ("Vapi-Patient-Lookup", "lookup_patient") and isinstance(res, dict):
                 pat = res.get("patient") or {}
                 if isinstance(pat, dict) and pat.get("name"):
                     state["first_name"] = pat["name"]
-            elif name == "Vapi-save-appointment":
+            elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
                 state["CONFIRM_AND_BOOK"] = "done"
         return res
 
@@ -117,11 +117,11 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
     avail_url = os.getenv("N8N_AVAILABILITY_URL", "").strip() or os.getenv("N8N_WEBHOOK_URL", "").strip()
     save_url = os.getenv("N8N_SAVE_URL", "").strip() or os.getenv("N8N_WEBHOOK_URL", "").strip()
 
-    if name == "Vapi-Patient-Lookup":
+    if name in ("Vapi-Patient-Lookup", "lookup_patient"):
         target_url = lookup_url
-    elif name == "vapi-check-availability":
+    elif name in ("vapi-check-availability", "check_clinic_availability"):
         target_url = avail_url
-    elif name == "Vapi-save-appointment":
+    elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
         target_url = save_url
 
     if target_url:
@@ -145,7 +145,7 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
             logger.error("n8n webhook connection failed for %s: %s", name, e)
 
     # 2. Local Fallback handlers (in-memory mock DB)
-    if name == "vapi-check-availability":
+    if name in ("vapi-check-availability", "check_clinic_availability"):
         date_str = args_dict.get("appointment_date", "")
         time_str = args_dict.get("appointment_time", "").strip()
 
@@ -166,14 +166,14 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
         
         return _finish({"status": "available", "appointment_date": date_str, "appointment_time": time_str})
 
-    elif name == "Vapi-Patient-Lookup":
+    elif name in ("Vapi-Patient-Lookup", "lookup_patient"):
         phone = "".join(filter(str.isdigit, args_dict.get("phone", "")))
         patient = PATIENT_DB.get(phone)
         if patient:
             return _finish({"found": True, "patient": patient})
         return _finish({"found": False, "message": "No matching record found for this phone number."})
 
-    elif name == "Vapi-save-appointment":
+    elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
         date_str = args_dict.get("appointment_date", "")
         time_str = args_dict.get("appointment_time", "").strip()
         slot_key = f"{date_str}@{time_str.lower()}"
@@ -192,7 +192,7 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
         SAVED_APPOINTMENTS.append(booking_record)
         return _finish({"status": "success", "booking": booking_record})
 
-    elif name == "end_after_reception":
+    elif name in ("end_after_reception", "end_call"):
         return _finish({"status": "call_ended", "message": "Call termination acknowledged."})
 
     return {"status": "error", "message": f"Unknown tool: {name}"}
