@@ -8,7 +8,7 @@ from prompt import get_system_prompt, OPENING_GREETING
 load_dotenv()
 
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
-DEEPGRAM_AGENT_URL = "wss://agent.deepgram.com/agent"
+DEEPGRAM_AGENT_URL = "wss://agent.deepgram.com/v1/agent/converse"
 
 # n8n Webhook Endpoints
 N8N_LOOKUP_URL = os.getenv("N8N_LOOKUP_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-patient-lookup")
@@ -110,7 +110,9 @@ async def run_agent():
     headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
     print(f"Connecting to Deepgram Voice Agent API ({DEEPGRAM_AGENT_URL})...")
 
-    async with websockets.connect(DEEPGRAM_AGENT_URL, extra_headers=headers) as ws:
+    # Connect with websockets (compatible across websockets versions)
+    connect_kwargs = {"additional_headers": headers} if hasattr(websockets, "asyncio") else {"extra_headers": headers}
+    async with websockets.connect(DEEPGRAM_AGENT_URL, **connect_kwargs) as ws:
         settings = build_agent_settings()
         await ws.send(json.dumps(settings))
         print("[Connected] Settings sent! Hannah is ready.")
