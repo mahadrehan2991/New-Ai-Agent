@@ -1,6 +1,6 @@
 import json
-from prompt import get_system_prompt, OPENING_GREETING, ORDER
-from tools import execute_tool, TOOL_DEFINITIONS, BOOKED_SLOTS, SAVED_APPOINTMENTS, get_active_tools
+from prompt import get_system_prompt, OPENING_GREETING, ORDER, valid_phone, update_state
+from tools import execute_tool, TOOL_DEFINITIONS, BOOKED_SLOTS, SAVED_APPOINTMENTS, get_active_tools, allowed_tools
 from fastapi.testclient import TestClient
 from app import app
 
@@ -25,7 +25,82 @@ def test_prompt_generation_with_state():
 
     full_state = {k: "done" for k in ORDER}
     full_prompt = get_system_prompt(full_state)
-    assert "Vapi-save-appointment" in full_prompt
+    assert "save the appointment" in full_prompt.lower()
+
+def test_valid_phone_validation():
+    # Canadian 10-digit
+    assert valid_phone("5483914156") == "5483914156"
+    assert valid_phone("(548) 391-4156") == "5483914156"
+    # Canadian 11-digit with leading 1
+    assert valid_phone("1-548-391-4156") == "5483914156"
+    # PK 11-digit
+    assert valid_phone("03302817157") == "03302817157"
+    # Invalid 10-digit PK test input
+    assert valid_phone("0330281713") is None
+    # Invalid short number
+    assert valid_phone("12345") is None
+
+def test_update_state_flow():
+    state = {}
+    # 1. patient_type
+    update_state(state, "i am a new patient")
+    assert state.get("patient_type") == "new"
+
+    # 2. first_name
+    update_state(state, "i am imran")
+    assert state.get("first_name") == "Imran"
+
+    # 3. last_name
+    update_state(state, "rabeez")
+    assert state.get("last_name") == "Rabeez"
+
+    # 4. phone rejection
+    retry = update_state(state, "0330281713")
+    assert "incomplete" in retry.lower()
+    assert "phone" not in state
+
+    # 4b. phone success
+    retry_ok = update_state(state, "03302817157")
+    assert retry_ok == ""
+    assert state.get("phone") == "03302817157"
+
+    # 5. complaint
+    update_state(state, "stiff lower back pain")
+    assert state.get("complaint") == "stiff lower back pain"
+
+def test_allowed_tools_gating():
+    # Empty state: no tools exposed
+    assert allowed_tools({}) is None
+
+    # Before complaint: availability is NOT exposed
+    state = {"patient_type": "new", "first_name": "Imran", "last_name": "Rabeez", "phone": "03302817157"}
+    tools = allowed_tools(state)
+    assert tools is None
+
+    # After complaint: availability is exposed
+    state["complaint"] = "stiff back"
+    tools = allowed_tools(state)
+    assert tools is not None
+    names = [t["function"]["name"] for t in tools]
+    assert "vapi-check-availability" in names
+    assert "Vapi-save-appointment" not in names
+
+    # After insurance: save appointment is exposed
+    state["preferred_time"] = "2026-10-23 2:00 PM"
+    state["insurance"] = "yes"
+    tools = allowed_tools(state)
+    names = [t["function"]["name"] for t in tools]
+    assert "Vapi-save-appointment" in names
+
+    # Existing patient with phone: lookup exposed
+    existing_state = {"patient_type": "existing", "phone": "15483914156"}
+    existing_tools = allowed_tools(existing_state)
+    existing_names = [t["function"]["name"] for t in existing_tools]
+    assert "Vapi-Patient-Lookup" in existing_names
+
+def test_availability_guard_empty_time():
+    res = execute_tool("vapi-check-availability", {"appointment_date": "2026-10-23", "appointment_time": ""})
+    assert "No time given yet" in str(res)
 
 def test_tool_definitions():
     tool_names = [t["function"]["name"] for t in TOOL_DEFINITIONS]

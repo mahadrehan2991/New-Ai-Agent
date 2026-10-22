@@ -92,9 +92,24 @@ TOOL_DEFINITIONS = [
     }
 ]
 
-def execute_tool(name: str, args_dict: dict) -> dict:
+def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
     """Executes the requested tool and returns the result dictionary."""
     logger.info("Executing tool: %s with args: %s", name, args_dict)
+
+    if name == "vapi-check-availability" and not args_dict.get("appointment_time", "").strip():
+        return {"results": [{"name": name, "toolCallId": "local-call", "result": "No time given yet. Ask the caller what time they prefer."}]}
+
+    def _finish(res: dict) -> dict:
+        if state is not None:
+            if name == "vapi-check-availability" and args_dict.get("appointment_time"):
+                state["preferred_time"] = f"{args_dict.get('appointment_date', '')} {args_dict.get('appointment_time', '')}".strip()
+            elif name == "Vapi-Patient-Lookup" and isinstance(res, dict):
+                pat = res.get("patient") or {}
+                if isinstance(pat, dict) and pat.get("name"):
+                    state["first_name"] = pat["name"]
+            elif name == "Vapi-save-appointment":
+                state["CONFIRM_AND_BOOK"] = "done"
+        return res
 
     # 1. Forward to n8n Webhook if configured
     target_url = None
@@ -124,7 +139,7 @@ def execute_tool(name: str, args_dict: dict) -> dict:
                     if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
                         data = data[0]
                     logger.info("n8n response for %s: %s", name, data)
-                    return data
+                    return _finish(data)
                 logger.warning("n8n webhook returned status %s: %s", res.status_code, res.text)
         except Exception as e:
             logger.error("n8n webhook connection failed for %s: %s", name, e)
@@ -138,25 +153,25 @@ def execute_tool(name: str, args_dict: dict) -> dict:
         try:
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             if dt.weekday() == 6:  # Sunday
-                return {"status": "unavailable", "reason": "Clinic is closed on Sundays."}
+                return _finish({"status": "unavailable", "reason": "Clinic is closed on Sundays."})
         except ValueError:
-            return {"status": "unavailable", "reason": "Invalid date format, must be YYYY-MM-DD."}
+            return _finish({"status": "unavailable", "reason": "Invalid date format, must be YYYY-MM-DD."})
 
         if not time_str:
-            return {"status": "available", "appointment_date": date_str, "available_slots": ["10:30 AM", "2:00 PM", "4:30 PM"]}
+            return _finish({"status": "available", "appointment_date": date_str, "available_slots": ["10:30 AM", "2:00 PM", "4:30 PM"]})
 
         slot_key = f"{date_str}@{time_str.lower()}"
         if slot_key in BOOKED_SLOTS:
-            return {"status": "unavailable", "reason": "Slot is already booked."}
+            return _finish({"status": "unavailable", "reason": "Slot is already booked."})
         
-        return {"status": "available", "appointment_date": date_str, "appointment_time": time_str}
+        return _finish({"status": "available", "appointment_date": date_str, "appointment_time": time_str})
 
     elif name == "Vapi-Patient-Lookup":
         phone = "".join(filter(str.isdigit, args_dict.get("phone", "")))
         patient = PATIENT_DB.get(phone)
         if patient:
-            return {"found": True, "patient": patient}
-        return {"found": False, "message": "No matching record found for this phone number."}
+            return _finish({"found": True, "patient": patient})
+        return _finish({"found": False, "message": "No matching record found for this phone number."})
 
     elif name == "Vapi-save-appointment":
         date_str = args_dict.get("appointment_date", "")
@@ -175,12 +190,26 @@ def execute_tool(name: str, args_dict: dict) -> dict:
             "insurance_company": args_dict.get("insurance_company", "None")
         }
         SAVED_APPOINTMENTS.append(booking_record)
-        return {"status": "success", "booking": booking_record}
+        return _finish({"status": "success", "booking": booking_record})
 
     elif name == "end_after_reception":
-        return {"status": "call_ended", "message": "Call termination acknowledged."}
+        return _finish({"status": "call_ended", "message": "Call termination acknowledged."})
 
     return {"status": "error", "message": f"Unknown tool: {name}"}
+
+def allowed_tools(state: dict | None = None, all_tools: list = TOOL_DEFINITIONS) -> list | None:
+    """State-based gating: returns allowed tools or None to omit tools from payload."""
+    if not state:
+        return None
+    tools = []
+    if state.get("patient_type") == "existing" and state.get("phone"):
+        tools.extend([t for t in all_tools if t["function"]["name"] == "Vapi-Patient-Lookup"])
+    if state.get("complaint"):
+        tools.extend([t for t in all_tools if t["function"]["name"] == "vapi-check-availability"])
+    if state.get("insurance"):
+        tools.extend([t for t in all_tools if t["function"]["name"] == "Vapi-save-appointment"])
+        tools.extend([t for t in all_tools if t["function"]["name"] == "end_after_reception"])
+    return tools if tools else None
 
 def get_active_tools(messages: list) -> list:
     """Dynamically exposes tools based on conversational state.

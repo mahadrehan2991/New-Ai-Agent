@@ -11,8 +11,8 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response, HTMLResponse
 from dotenv import load_dotenv
 
-from prompt import get_system_prompt, OPENING_GREETING
-from tools import TOOL_DEFINITIONS, execute_tool, get_active_tools
+from prompt import get_system_prompt, OPENING_GREETING, update_state
+from tools import TOOL_DEFINITIONS, execute_tool, get_active_tools, allowed_tools
 
 load_dotenv()
 
@@ -58,12 +58,13 @@ async def api_simulate_voice(request: Request):
     body = await request.json()
     user_text = body.get("text", "")
     history = body.get("messages", [])
+    state = body.get("state") or {}
 
-    messages = [{"role": "system", "content": get_system_prompt()}]
+    retry = update_state(state, user_text) if user_text else ""
+    messages = [{"role": "system", "content": get_system_prompt(state, retry)}]
     for m in history:
         if m.get("role") in ("user", "assistant") and m.get("content"):
             messages.append({"role": m["role"], "content": m["content"]})
-    messages[0]["content"] = get_system_prompt(messages=messages)
 
     tools_executed = []
     total_tool_ms = 0
@@ -71,7 +72,8 @@ async def api_simulate_voice(request: Request):
 
     while True:
         t_llm = time.time()
-        ai_msg = await query_brain(messages)
+        active = allowed_tools(state)
+        ai_msg = await query_brain(messages, tools=active)
         total_llm_ms += int((time.time() - t_llm) * 1000)
         messages.append(ai_msg)
 
@@ -99,7 +101,8 @@ async def api_simulate_voice(request: Request):
                 "audio_base64": audio_b64,
                 "llm_ms": total_llm_ms,
                 "tool_ms": total_tool_ms,
-                "tools_executed": tools_executed
+                "tools_executed": tools_executed,
+                "state": state
             }
 
         for tool in tool_calls:
@@ -111,7 +114,7 @@ async def api_simulate_voice(request: Request):
                 fn_args = {}
 
             t_t = time.time()
-            result = execute_tool(fn_name, fn_args)
+            result = execute_tool(fn_name, fn_args, state=state)
             total_tool_ms += int((time.time() - t_t) * 1000)
             tools_executed.append({"name": fn_name, "args": fn_args, "result": result})
 
@@ -181,10 +184,10 @@ async def send_tts_audio(websocket: WebSocket, stream_sid: str, text: str):
     except Exception as e:
         logger.error("TTS stream error: %s", e)
 
-async def call_llm(messages: List[Dict[str, Any]], base_url: str, api_key: str, model: str) -> Optional[Dict[str, Any]]:
+async def call_llm(messages: List[Dict[str, Any]], base_url: str, api_key: str, model: str, tools: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
     """Calls OpenAI-compatible LLM endpoint (Liquid AI LFM or fallback)."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    active_tools = get_active_tools(messages)
+    active_tools = tools if tools is not None else get_active_tools(messages)
     payload = {
         "model": model,
         "messages": messages,
@@ -209,18 +212,18 @@ async def call_llm(messages: List[Dict[str, Any]], base_url: str, api_key: str, 
         logger.error("LLM call failed (%s): %s", resp.status_code, resp.text)
         return None
 
-async def query_brain(messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+async def query_brain(messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Queries Liquid LFM on the VPS, falling back to secondary endpoint if configured."""
     msg = None
     try:
-        msg = await call_llm(messages, LFM_BASE_URL, LFM_API_KEY, LFM_MODEL)
+        msg = await call_llm(messages, LFM_BASE_URL, LFM_API_KEY, LFM_MODEL, tools=tools)
     except Exception as err:
         logger.warning("Primary LFM model error: %s", err)
 
     if not msg and FALLBACK_BASE_URL:
         logger.info("Attempting fallback model at %s...", FALLBACK_BASE_URL)
         try:
-            msg = await call_llm(messages, FALLBACK_BASE_URL, FALLBACK_API_KEY, FALLBACK_MODEL)
+            msg = await call_llm(messages, FALLBACK_BASE_URL, FALLBACK_API_KEY, FALLBACK_MODEL, tools=tools)
         except Exception as err:
             logger.error("Fallback model error: %s", err)
 
@@ -251,10 +254,11 @@ async def media_stream(websocket: WebSocket):
     call_sid = None
     dg_socket = None
     should_end_call = False
+    state: Dict[str, Any] = {}
 
     # Initialize conversation state with dynamic Toronto date/time prompt
     messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": get_system_prompt()}
+        {"role": "system", "content": get_system_prompt(state)}
     ]
 
     async def run_dg_receive():
@@ -283,8 +287,9 @@ async def media_stream(websocket: WebSocket):
                             "streamSid": stream_sid
                         }))
 
-                    # Append user message
+                    # Append user message and update state
                     messages.append({"role": "user", "content": transcript})
+                    retry = update_state(state, transcript)
 
                     # Maintain sliding window to protect LFM context budget on VPS
                     if len(messages) > MAX_HISTORY_MESSAGES:
@@ -296,11 +301,12 @@ async def media_stream(websocket: WebSocket):
                         messages.extend(recent)
 
                     # Update system prompt with fresh conversation state
-                    messages[0]["content"] = get_system_prompt(messages=messages)
+                    messages[0]["content"] = get_system_prompt(state, retry)
 
                     # LLM completion loop (handles tool calls)
                     while True:
-                        ai_msg = await query_brain(messages)
+                        active = allowed_tools(state)
+                        ai_msg = await query_brain(messages, tools=active)
                         messages.append(ai_msg)
 
                         tool_calls = ai_msg.get("tool_calls")
@@ -326,7 +332,7 @@ async def media_stream(websocket: WebSocket):
                             if fn_name == "end_after_reception":
                                 should_end_call = True
 
-                            result = execute_tool(fn_name, fn_args)
+                            result = execute_tool(fn_name, fn_args, state=state)
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": t_id,

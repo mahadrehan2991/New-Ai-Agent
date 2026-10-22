@@ -1,8 +1,10 @@
 import sys
 import asyncio
 import json
-from prompt import get_system_prompt, OPENING_GREETING
-from tools import execute_tool
+import time
+import re
+from prompt import get_system_prompt, OPENING_GREETING, update_state
+from tools import execute_tool, allowed_tools
 from app import query_brain
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -15,7 +17,8 @@ async def main():
     print("Type 'exit' or 'quit' to stop.")
     print("=" * 60 + "\n")
 
-    messages = [{"role": "system", "content": get_system_prompt()}]
+    state = {}
+    messages = [{"role": "system", "content": get_system_prompt(state)}]
 
     # Hannah speaks first
     print(f"Hannah: {OPENING_GREETING}\n")
@@ -34,25 +37,22 @@ async def main():
             print("Call ended.")
             break
 
-        messages.append({"role": "user", "content": user_input})
-
-        import time
         turn_start = time.time()
-
-        # Update system prompt with dynamically extracted state
-        messages[0]["content"] = get_system_prompt(messages=messages)
+        retry = update_state(state, user_input)
+        messages.append({"role": "user", "content": user_input})
+        messages[0]["content"] = get_system_prompt(state, retry)
 
         # LLM completion loop handling tool calls
         while True:
             t0 = time.time()
-            ai_msg = await query_brain(messages)
+            tools = allowed_tools(state)
+            ai_msg = await query_brain(messages, tools=tools)
             llm_ms = (time.time() - t0) * 1000
             messages.append(ai_msg)
 
             tool_calls = ai_msg.get("tool_calls")
             if not tool_calls:
                 reply = ai_msg.get("content", "").strip()
-                import re
                 reply = re.sub(r'^(Hannah|Assistant):\s*', '', reply, flags=re.IGNORECASE)
                 reply = re.sub(r'\[.*?\]', '', reply).strip()
                 total_ms = (time.time() - turn_start) * 1000
@@ -70,7 +70,7 @@ async def main():
 
                 print(f"\n[Tool Executing: {fn_name}({json.dumps(fn_args)})]")
                 t_tool = time.time()
-                result = execute_tool(fn_name, fn_args)
+                result = execute_tool(fn_name, fn_args, state=state)
                 tool_ms = (time.time() - t_tool) * 1000
                 print(f"[Tool Result: {json.dumps(result)} | ⏱️ Webhook: {tool_ms:.0f}ms]")
 
