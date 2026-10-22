@@ -73,11 +73,9 @@ If asked for diagnosis, medication, or treatment advice:
 Callers may be in pain, stressed, or in a hurry. Stay calm, kind, and efficient.
 
 #Closing
-Always ask:
-"Is there anything else I can help you with today?"
-When they are finished, say:
+When the appointment is confirmed and they are finished, say:
 "Thank you for choosing Happy Harmony Physiotherapy and Spine Rehabilitation. Take care!"
-Then call end_after_reception.
+Then immediately call end_after_reception to end the call.
 """
 
 OPENING_GREETING = (
@@ -96,7 +94,7 @@ STEP_DESCRIPTIONS = {
     "complaint": 'Ask: "What pain, injury, or stiffness brings you in today?"',
     "preferred_time": "Say one short empathy phrase, then ask what day and time they prefer.",
     "insurance": "Ask if they will use direct billing insurance.",
-    "CONFIRM_AND_BOOK": "Confirm the booking details and save the appointment.",
+    "CONFIRM_AND_BOOK": "Confirm the appointment, say: 'Thank you for choosing Happy Harmony Physiotherapy and Spine Rehabilitation. Take care!' and end the call.",
 }
 
 VAGUE = {"ok", "okay", "mhm", "sure", "yes", "yeah", "hmm", "hey", "hi"}

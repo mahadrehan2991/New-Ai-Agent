@@ -25,7 +25,7 @@ def test_prompt_generation_with_state():
 
     full_state = {k: "done" for k in ORDER}
     full_prompt = get_system_prompt(full_state)
-    assert "save the appointment" in full_prompt.lower()
+    assert "take care" in full_prompt.lower()
 
 def test_valid_phone_validation():
     # Canadian 10-digit

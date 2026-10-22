@@ -207,6 +207,11 @@ async def run_call():
                                 print(f"Caller (You): {content}")
                             else:
                                 print(f"Hannah: {content}")
+                                if "take care" in content.lower() and "happy harmony" in content.lower():
+                                    async def delayed_hangup():
+                                        await asyncio.sleep(4.0)  # Wait for voice playback to finish
+                                        stop_event.set()
+                                    asyncio.create_task(delayed_hangup())
 
                         elif msg_type == "FunctionCallRequest":
                             # Deepgram official spec: "functions": [{"id": ..., "name": ..., "arguments": ...}]
