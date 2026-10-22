@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hannah Voice AI - Latency & Audio Simulator</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --green: #22c55e;
+      --amber: #f59e0b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .header h1 {
+      margin: 0 0 6px 0;
+      font-size: 24px;
+      color: var(--accent);
+    }
+    .header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .metric-box {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 8px;
+      padding: 12px 8px;
+      text-align: center;
+    }
+    .metric-title {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .metric-val {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 4px;
+      color: var(--text);
+    }
+    .metric-val.total {
+      color: var(--green);
+    }
+    .chat-box {
+      height: 340px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 4px;
+    }
+    .msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14.5px;
+      line-height: 1.4;
+    }
+    .msg.assistant {
+      align-self: flex-start;
+      background: #334155;
+      color: var(--text);
+      border-bottom-left-radius: 2px;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: #0284c7;
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+    .msg.tool {
+      align-self: center;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px dashed var(--amber);
+      color: var(--amber);
+      font-size: 12px;
+      font-family: monospace;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: white;
+      font-size: 14px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+    button {
+      padding: 12px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.15s ease;
+    }
+    .btn-send {
+      background: var(--accent);
+      color: #0f172a;
+    }
+    .btn-mic {
+      background: #dc2626;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-mic.listening {
+      background: var(--green);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(1.03); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .status-bar {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Hannah Voice AI Simulator</h1>
+      <p>Test real-time conversational delay, Deepgram Aura voice & tool executions</p>
+    </div>
+
+    <!-- Live Latency Dashboard -->
+    <div class="card">
+      <div class="metrics">
+        <div class="metric-box">
+          <div class="metric-title">STT Mic</div>
+          <div class="metric-val" id="val-stt">0 ms</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">LLM Brain</div>
+          <div class="metric-val" id="val-llm">0 ms</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">n8n Tools</div>
+          <div class="metric-val" id="val-tool">0 ms</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">Total Delay</div>
+          <div class="metric-val total" id="val-total">0.00 s</div>
+        </div>
+      </div>
+      <div class="status-bar">
+        <span id="conn-status">Brain: Qwen 2.5 3B (VPS 209.126.1.68)</span>
+        <span id="voice-status">Audio: Ready</span>
+      </div>
+    </div>
+
+    <!-- Live Chat Log -->
+    <div class="card">
+      <div class="chat-box" id="chat">
+        <div class="msg assistant">
+          Hello, thank you for calling Happy Harmony Physiotherapy and Spine Rehabilitation Clinic! My name is Hannah. How may I help you today?
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Controls -->
+    <div class="controls">
+      <button class="btn-mic" id="btn-mic" onclick="toggleMic()">🎙️ Speak</button>
+      <input type="text" id="input-text" placeholder="Or type your message and press Enter..." onkeydown="handleKey(event)">
+      <button class="btn-send" onclick="sendInput()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    let messages = [
+      { role: "assistant", content: "Hello, thank you for calling Happy Harmony Physiotherapy and Spine Rehabilitation Clinic! My name is Hannah. How may I help you today?" }
+    ];
+    let isListening = false;
+    let recognition = null;
+    let micStartTime = 0;
+
+    // Browser Speech Recognition setup
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        isListening = true;
+        micStartTime = performance.now();
+        document.getElementById("btn-mic").classList.add("listening");
+        document.getElementById("btn-mic").innerText = "🔴 Listening...";
+        document.getElementById("voice-status").innerText = "Listening to your voice...";
+      };
+
+      recognition.onresult = (e) => {
+        const text = e.results[0][0].transcript;
+        const sttMs = Math.round(performance.now() - micStartTime);
+        document.getElementById("val-stt").innerText = `${sttMs} ms`;
+        document.getElementById("input-text").value = text;
+        submitTurn(text, sttMs);
+      };
+
+      recognition.onerror = (e) => {
+        console.error("STT error:", e);
+        stopMic();
+        document.getElementById("voice-status").innerText = "Mic error: " + e.error;
+      };
+
+      recognition.onend = () => {
+        stopMic();
+      };
+    } else {
+      document.getElementById("btn-mic").disabled = true;
+      document.getElementById("btn-mic").innerText = "🎙️ No STT API";
+      document.getElementById("voice-status").innerText = "Use Chrome/Edge for voice input";
+    }
+
+    function toggleMic() {
+      if (!recognition) return;
+      if (isListening) {
+        recognition.stop();
+      } else {
+        recognition.start();
+      }
+    }
+
+    function stopMic() {
+      isListening = false;
+      document.getElementById("btn-mic").classList.remove("listening");
+      document.getElementById("btn-mic").innerText = "🎙️ Speak";
+    }
+
+    function handleKey(e) {
+      if (e.key === "Enter") sendInput();
+    }
+
+    function sendInput() {
+      const input = document.getElementById("input-text");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      document.getElementById("val-stt").innerText = "0 ms (Typed)";
+      submitTurn(text, 0);
+    }
+
+    function appendMessage(role, content) {
+      const chat = document.getElementById("chat");
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.innerText = content;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function submitTurn(userText, sttMs) {
+      appendMessage("user", userText);
+      messages.push({ role: "user", content: userText });
+      document.getElementById("voice-status").innerText = "Processing with VPS Brain...";
+
+      const tStart = performance.now();
+      try {
+        const res = await fetch("/api/simulate-voice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: userText, messages: messages })
+        });
+        const data = await res.json();
+        const totalMs = Math.round(performance.now() - tStart + sttMs);
+
+        // Update gauges
+        document.getElementById("val-llm").innerText = `${data.llm_ms || 0} ms`;
+        document.getElementById("val-tool").innerText = `${data.tool_ms || 0} ms`;
+        document.getElementById("val-total").innerText = `${(totalMs / 1000).toFixed(2)} s`;
+
+        // Display tool calls if any
+        if (data.tools_executed && data.tools_executed.length > 0) {
+          for (const t of data.tools_executed) {
+            appendMessage("tool", `[Tool: ${t.name}] => ${JSON.stringify(t.result)}`);
+          }
+        }
+
+        // Display Assistant Reply
+        appendMessage("assistant", data.reply);
+        messages.push({ role: "assistant", content: data.reply });
+
+        // Play Audio (Deepgram Aura TTS or Browser fallback)
+        if (data.audio_base64) {
+          document.getElementById("voice-status").innerText = "Playing Deepgram Aura voice...";
+          const snd = new Audio("data:audio/mp3;base64," + data.audio_base64);
+          snd.play();
+          snd.onended = () => { document.getElementById("voice-status").innerText = "Ready"; };
+        } else if ("speechSynthesis" in window) {
+          document.getElementById("voice-status").innerText = "Playing browser voice...";
+          const utter = new SpeechSynthesisUtterance(data.reply);
+          utter.rate = 1.05;
+          window.speechSynthesis.speak(utter);
+          utter.onend = () => { document.getElementById("voice-status").innerText = "Ready"; };
+        }
+      } catch (err) {
+        console.error("Turn failed:", err);
+        appendMessage("assistant", "Error connecting to server. Check terminal.");
+        document.getElementById("voice-status").innerText = "Connection error";
+      }
+    }
+  </script>
+</body>
+</html>
