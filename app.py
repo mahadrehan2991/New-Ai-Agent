@@ -461,7 +461,7 @@ def build_twilio_agent_settings() -> dict:
                     },
                     {
                         "name": "end_after_reception",
-                        "description": "Ends the phone call after the final closing statement has been spoken.",
+                        "description": "Ends the phone call. Invoke this function in the EXACT SAME turn when speaking the closing goodbye phrase ('Thank you for choosing Happy Harmony Physiotherapy and Spine Rehabilitation. Take care!').",
                         "parameters": {
                             "type": "object",
                             "properties": {}
