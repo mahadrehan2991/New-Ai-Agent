@@ -53,7 +53,8 @@ NEXT_STEP: {next_step}
 8. Ask if they will use direct billing insurance: "Will you be using insurance for direct billing today?" Do NOT ask for the company name yet.
    - If the caller says NO: set insurance to "None" and proceed directly to finalizing the booking.
    - If the caller says YES: ask "Which insurance company is it with?".
-   - When the caller provides their insurance company name (e.g. "GreenShade", "Sun Life"), you MUST repeat and confirm the insurance company name back to them (e.g. "Thank you, [Insurance Company].") before proceeding to save the appointment.
+   - When the caller provides their insurance company name (e.g. "GreenShade", "Sun Life"), explicitly ask for confirmation: "That's [Insurance Company], is that correct?" and wait for their confirmation before saving the appointment.
+   - Once the caller confirms ("yes", "that's right"), immediately proceed to save the appointment.
 9. When the caller confirms the slot and insurance details, IMMEDIATELY call Vapi-save-appointment in that turn to finalize the booking.
 10. Once booked, confirm: "Your appointment has been scheduled for [Day], [Date] at [Time]. Is there anything else you would like to ask?"
 11. If the caller asks a question, answer concisely. When the caller says "no", "that's all", "thank you", or indicates they have no more questions, you MUST say:
@@ -106,7 +107,8 @@ STEP_DESCRIPTIONS = {
     "complaint": 'Ask: "What pain, injury, or stiffness brings you in today?"',
     "preferred_time": "Say one short empathy phrase, then ask what day and time they prefer.",
     "insurance": 'Ask: "Will you be using insurance for direct billing today?"',
-    "insurance_company": 'Ask: "Which insurance company is it with?" Once provided, repeat the insurance company name back to confirm it.',
+    "insurance_company": 'Ask: "Which insurance company is it with?"',
+    "insurance_confirmed": 'Confirm explicitly: "That\'s [insurance company name], is that correct?"',
     "CONFIRM_AND_BOOK": "Save the appointment, confirm: 'Your appointment has been scheduled for [Day], [Date] at [Time]. Is there anything else you would like to ask?', answer any questions, and once finished or if they say no, say: 'Thank you for choosing Happy Harmony Physiotherapy and Spine Rehabilitation. Take care!' and call end_after_reception in the same turn.",
 }
 
@@ -118,8 +120,11 @@ def next_field(state: dict) -> str:
     for f in order:
         if not state.get(f):
             return f
-        if f == "insurance" and state.get("insurance") == "yes" and not state.get("insurance_company"):
-            return "insurance_company"
+        if f == "insurance" and state.get("insurance") == "yes":
+            if not state.get("insurance_company"):
+                return "insurance_company"
+            if not state.get("insurance_confirmed"):
+                return "insurance_confirmed"
     return "CONFIRM_AND_BOOK"
 
 
@@ -169,6 +174,7 @@ def update_state(state: dict, text: str) -> str:
         if any(w in low for w in ("no", "nope", "not", "dont", "don't", "self", "none")):
             state["insurance"] = "None"
             state["insurance_company"] = "None"
+            state["insurance_confirmed"] = True
         elif any(w in low for w in ("yes", "yeah", "yep", "sure", "direct", "i would", "i will")):
             state["insurance"] = "yes"
             m = re.search(r"(?:name is|company is|with|it's|its)\s+([A-Za-z0-9\s'-]+)", text, re.IGNORECASE)
@@ -178,6 +184,11 @@ def update_state(state: dict, text: str) -> str:
         if low not in VAGUE:
             c_name = re.sub(r"(?i)\b(it's|its|the company is|company name is|with|it is)\b", "", text).strip()
             state["insurance_company"] = c_name.title() if c_name else text.strip().title()
+    elif nxt == "insurance_confirmed":
+        if any(w in low for w in ("yes", "yeah", "yep", "correct", "right", "that's right", "sure")):
+            state["insurance_confirmed"] = True
+        elif any(w in low for w in ("no", "nope", "wrong", "not")):
+            state["insurance_company"] = None
     return ""
 
 
@@ -186,7 +197,11 @@ def get_system_prompt(state: dict | None = None, retry_note: str = "") -> str:
     now = datetime.now(zoneinfo.ZoneInfo("America/Toronto"))
     collected = {k: v for k, v in state.items() if v} or "nothing yet"
     nxt = next_field(state)
-    instruction = STEP_DESCRIPTIONS[nxt] + (" " + retry_note if retry_note else "")
+    instruction = STEP_DESCRIPTIONS[nxt]
+    if nxt == "insurance_confirmed":
+        company = state.get("insurance_company", "your insurance company")
+        instruction = f'Confirm explicitly: "That\'s {company}, is that correct?"'
+    instruction += (" " + retry_note if retry_note else "")
     return (SYSTEM_PROMPT_TEMPLATE
             .replace("{current_date}", now.strftime("%A, %B %d, %Y"))
             .replace("{current_time}", now.strftime("%I:%M %p"))
