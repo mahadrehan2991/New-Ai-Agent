@@ -496,8 +496,25 @@ async def media_stream(websocket: WebSocket):
     async def run_twilio_sender():
         """Smoothly paces telephony frames to Twilio at real-time 8kHz mulaw rate to eliminate choppy cuts."""
         nonlocal audio_buffer, stream_sid
+        primed = False
         try:
             while not stop_event.is_set():
+                if stream_sid and not primed:
+                    # G.711 mu-law silence byte is 0xFF. Stream ~700ms of silence (18 frames @ 40ms)
+                    # to prime Twilio's RTP buffer & allow caller's earpiece/carrier audio bridge to open.
+                    silence_frame = b"\xff" * 320
+                    silence_payload = base64.b64encode(silence_frame).decode("utf-8")
+                    for _ in range(18):
+                        if stop_event.is_set() or not stream_sid:
+                            break
+                        await websocket.send_text(json.dumps({
+                            "event": "media",
+                            "streamSid": stream_sid,
+                            "media": {"payload": silence_payload}
+                        }))
+                        await asyncio.sleep(0.038)
+                    primed = True
+
                 if stream_sid and len(audio_buffer) >= 320:
                     frame = bytes(audio_buffer[:320])
                     del audio_buffer[:320]
@@ -518,7 +535,7 @@ async def media_stream(websocket: WebSocket):
 
     async def run_dg_receive():
         """Listens for audio frames & events from Deepgram Voice Agent API."""
-        nonlocal call_sid, stream_sid, saved_booking, audio_buffer
+        nonlocal call_sid, stream_sid, saved_booking, audio_buffer, call_start_time
         try:
             async for raw in dg_socket:
                 if isinstance(raw, bytes):
@@ -529,8 +546,18 @@ async def media_stream(websocket: WebSocket):
                     msg_type = data.get("type", "")
 
                     if msg_type == "UserStartedSpeaking":
-                        # Caller spoke: clear remaining unstreamed buffer so new turn starts fresh
-                        audio_buffer.clear()
+                        # Prevent initial line rustle/pickup noise in first 4.5s from truncating Hannah's greeting
+                        now = time.time()
+                        if call_start_time and (now - call_start_time) > 4.5:
+                            audio_buffer.clear()
+                            if stream_sid:
+                                try:
+                                    await websocket.send_text(json.dumps({
+                                        "event": "clear",
+                                        "streamSid": stream_sid
+                                    }))
+                                except Exception:
+                                    pass
 
                     elif msg_type == "AgentAudioDone":
                         pass
@@ -645,6 +672,9 @@ async def media_stream(websocket: WebSocket):
                 elif event_type == "media":
                     media_payload = event_data.get("media", {}).get("payload")
                     if media_payload and dg_socket:
+                        # Ignore initial handset pickup rustle/line noise during the first 1.2s
+                        if call_start_time and (time.time() - call_start_time) < 1.2:
+                            continue
                         audio_bytes = base64.b64decode(media_payload)
                         await dg_socket.send(audio_bytes)
 
