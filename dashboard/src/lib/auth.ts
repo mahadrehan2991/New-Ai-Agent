@@ -61,12 +61,12 @@ export function verifyAdminPassword(input: string): boolean {
 }
 
 /**
- * Creates an HMAC-signed session token
+ * Creates an HMAC-signed session token (safe for RFC 6265 cookies without %3A encoding)
  */
 export function generateSessionToken(): string {
   const timestamp = Date.now().toString();
   const nonce = crypto.randomBytes(16).toString("hex");
-  const data = `admin:${timestamp}:${nonce}`;
+  const data = `admin_${timestamp}_${nonce}`;
   const hmac = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("hex");
   return `${data}.${hmac}`;
 }
@@ -74,8 +74,10 @@ export function generateSessionToken(): string {
 /**
  * Validates the HMAC signature and expiration of a session token
  */
-export function isValidSessionToken(token: string): boolean {
-  if (!token || !token.includes(".")) return false;
+export function isValidSessionToken(rawToken: string): boolean {
+  if (!rawToken) return false;
+  const token = decodeURIComponent(rawToken);
+  if (!token.includes(".")) return false;
   const parts = token.split(".");
   if (parts.length !== 2) return false;
 
@@ -86,7 +88,9 @@ export function isValidSessionToken(token: string): boolean {
   const b = Buffer.from(expectedHmac);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
 
-  const [user, timestampStr] = data.split(":");
+  const dataParts = data.includes("_") ? data.split("_") : data.split(":");
+  const user = dataParts[0];
+  const timestampStr = dataParts[1];
   if (user !== "admin") return false;
 
   const timestamp = parseInt(timestampStr, 10);

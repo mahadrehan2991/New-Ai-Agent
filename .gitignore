@@ -3,6 +3,16 @@
 *.env
 !.env.example
 
+# Distribution & Standalone exports
+*.zip
+voice_agent_standalone/
+
+# Scratch & Debug scripts
+check_login.py
+dashboard/check_login.py
+*.wav
+dashboard/public/recordings/*.wav
+
 # Python cache & artifacts
 __pycache__/
 *.py[cod]

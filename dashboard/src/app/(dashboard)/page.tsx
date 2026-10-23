@@ -11,6 +11,7 @@ import {
   Smile,
   Meh,
   Frown,
+  Volume2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -150,18 +151,18 @@ export default async function OverviewPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Clinic Overview
+            Clinic Operations & Intake
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Real-time call reception performance and appointment analytics for Happy Harmony Clinic.
+            Daily patient calls, triage volume, and confirmed physiotherapy appointments for Happy Harmony Clinic.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/calls"
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-teal-600/30 transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
           >
-            <span>View All Call Logs</span>
+            <span>View Call Records</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -170,90 +171,90 @@ export default async function OverviewPage() {
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {/* Card 1: Calls Today */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-4 border-t-teal-700 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Calls Today</span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/60 flex items-center justify-center text-teal-600 dark:text-teal-400">
-              <PhoneCall className="w-4 h-4" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Calls Today</span>
+            <div className="w-7 h-7 rounded-md bg-teal-50 dark:bg-teal-950/60 flex items-center justify-center text-teal-700 dark:text-teal-400">
+              <PhoneCall className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
               {displayTodayCalls}
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5">
-              / {totalCalls} total
+            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5 font-medium">
+              / {totalCalls} all-time
             </span>
           </div>
         </div>
 
         {/* Card 2: Bookings Today */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-4 border-t-emerald-600 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Bookings Today</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <CalendarCheck className="w-4 h-4" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Bookings Today</span>
+            <div className="w-7 h-7 rounded-md bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
+              <CalendarCheck className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-3">
-            <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
+          <div className="mt-2.5">
+            <span className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400">
               {displayTodayBookings}
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5">
-              / {allBookedCount} total
+            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5 font-medium">
+              / {allBookedCount} booked
             </span>
           </div>
         </div>
 
         {/* Card 3: Booking Conversion Rate */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-4 border-t-blue-600 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Conversion Rate</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <TrendingUp className="w-4 h-4" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Conversion</span>
+            <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-700 dark:text-blue-400">
+              <TrendingUp className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
               {conversionRate}%
             </span>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium ml-1.5">
+            <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold ml-1.5">
               Target &gt; 50%
             </span>
           </div>
         </div>
 
         {/* Card 4: Average Call Duration */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-4 border-t-slate-600 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Avg Duration</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <Clock className="w-4 h-4" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Avg Duration</span>
+            <div className="w-7 h-7 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-300">
+              <Clock className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
               {avgDurationDisplay}
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5">
-              per call
+            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5 font-medium">
+              per intake
             </span>
           </div>
         </div>
 
         {/* Card 5: Abandoned Calls */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 border-t-4 border-t-rose-500 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-            <span className="text-xs font-semibold uppercase tracking-wider">Abandoned</span>
-            <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/60 flex items-center justify-center text-red-600 dark:text-red-400">
-              <PhoneOff className="w-4 h-4" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Missed / Drops</span>
+            <div className="w-7 h-7 rounded-md bg-rose-50 dark:bg-rose-950/60 flex items-center justify-center text-rose-700 dark:text-rose-400">
+              <PhoneOff className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-3">
-            <span className="text-2xl font-extrabold text-red-600 dark:text-red-400">
+          <div className="mt-2.5">
+            <span className="text-2xl font-extrabold text-rose-600 dark:text-rose-400">
               {abandonedCallsCount}
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5">
+            <span className="text-xs text-slate-400 dark:text-slate-500 ml-1.5 font-medium">
               dropoffs
             </span>
           </div>
@@ -269,14 +270,14 @@ export default async function OverviewPage() {
       />
 
       {/* Recent Calls Feed */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-              Recent Call Inquiries
+              Recent Patient Intake Calls
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Latest phone interactions handled by Hannah
+              Latest phone interactions triaged at clinic reception
             </p>
           </div>
           <Link
@@ -305,22 +306,29 @@ export default async function OverviewPage() {
               {recentCalls.map((c) => {
                 const durationFmt = `${Math.floor(c.durationSeconds / 60)}m ${c.durationSeconds % 60}s`;
                 return (
-                  <tr key={c.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr
+                    key={c.id}
+                    className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
+                  >
                     <td className="py-3 px-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
-                      {new Date(c.startedAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
+                      <Link href={`/calls/${c.id}`} className="hover:text-teal-600 transition-colors">
+                        {new Date(c.startedAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </Link>
                     </td>
                     <td className="py-3 px-3">
                       <MaskedPhone phone={c.callerPhone} />
                     </td>
                     <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">
-                      {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : "Unknown Caller"}
+                      <Link href={`/calls/${c.id}`} className="hover:underline">
+                        {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : "Unknown Caller"}
+                      </Link>
                     </td>
-                    <td className="py-3 px-3 text-slate-500">{durationFmt}</td>
+                    <td className="py-3 px-3 text-slate-500 font-mono text-xs">{durationFmt}</td>
                     <td className="py-3 px-3">
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
@@ -349,7 +357,9 @@ export default async function OverviewPage() {
                       </div>
                     </td>
                     <td className="py-3 px-3 text-right max-w-xs truncate text-slate-500 dark:text-slate-400">
-                      {c.summary || "General inquiry"}
+                      <Link href={`/calls/${c.id}`} className="hover:text-teal-600">
+                        {c.summary || "General inquiry"}
+                      </Link>
                     </td>
                   </tr>
                 );

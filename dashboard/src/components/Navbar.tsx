@@ -22,26 +22,27 @@ export function Navbar() {
   return (
     <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <Clock className="w-3.5 h-3.5 text-teal-600" />
-          <span>Clinic Time: <strong className="text-slate-700 dark:text-slate-200">America/Toronto (EST)</strong></span>
+        <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+          <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Reception Desk Active
+          </span>
+          <span className="text-slate-300 dark:text-slate-700">•</span>
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-teal-600" />
+            <span>London, ON (EST)</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Status indicator */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-full text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-          <Phone className="w-3 h-3 text-emerald-600 animate-pulse" />
-          <span>Deepgram Voice Active</span>
-        </div>
-
+      <div className="flex items-center gap-3">
         {/* Staff User */}
-        <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-700 text-xs">
-          <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-900 flex items-center justify-center text-teal-700 dark:text-teal-300 font-semibold text-[11px]">
-            SA
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 text-xs">
+          <div className="w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center font-bold text-[10px]">
+            HH
           </div>
-          <span className="font-semibold text-slate-700 dark:text-slate-300 hidden md:inline">
-            Clinic Staff
+          <span className="font-semibold text-slate-700 dark:text-slate-200 text-xs">
+            Reception Staff
           </span>
         </div>
 

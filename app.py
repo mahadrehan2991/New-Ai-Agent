@@ -1,8 +1,12 @@
 import os
+import re
 import json
+import time
 import base64
+import socket
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 import httpx
@@ -18,6 +22,20 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("voice_agent")
+
+# Resilient DNS Resolver for Deepgram (Prevents Windows Errno 11002 getaddrinfo timeouts on local router/ISP DNS)
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _resilient_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host in ("agent.deepgram.com", "sts.sac1.deepgram.com"):
+        try:
+            return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+        except Exception:
+            logger.info("Local DNS lookup failed for %s, using resilient Deepgram Anycast fallback", host)
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("216.200.21.204", port))]
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+socket.getaddrinfo = _resilient_getaddrinfo
 
 # Configuration
 PORT = int(os.getenv("PORT", "8000"))
@@ -125,10 +143,122 @@ async def api_simulate_voice(request: Request):
                 "content": json.dumps(result)
             })
 
+CALL_CALLER_PHONES: Dict[str, str] = {}
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:3000")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "whsec_harmony_secret_key_london")
+
+async def send_dashboard_webhook(endpoint: str, payload: dict):
+    """Sends asynchronous telemetry event to the clinic staff review dashboard."""
+    url = f"{DASHBOARD_URL.rstrip('/')}/api/webhooks/{endpoint.lstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {WEBHOOK_SECRET}",
+        "Content-Type": "application/json"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code >= 400:
+                logger.warning("Dashboard webhook %s returned HTTP %s: %s", endpoint, resp.status_code, resp.text)
+    except Exception as e:
+        logger.warning("Could not deliver webhook to dashboard (%s): %s", endpoint, e)
+
+def format_appointment_iso(appt_date: str, appt_time: str) -> str:
+    """Parses date and time like '3:00 PM' or '3 pm' into exact UTC ISO string."""
+    clean_date = (appt_date or "2026-10-25").strip()
+    clean_time = (appt_time or "15:00").strip().upper()
+    try:
+        import re
+        m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?", clean_time)
+        if m:
+            h = int(m.group(1))
+            mn = int(m.group(2) or 0)
+            mer = m.group(3)
+            if mer == "PM" and h < 12:
+                h += 12
+            elif mer == "AM" and h == 12:
+                h = 0
+            return f"{clean_date}T{h:02d}:{mn:02d}:00Z"
+    except Exception:
+        pass
+    return f"{clean_date}T15:00:00Z"
+
+async def start_twilio_call_recording(call_sid: str, callback_url: str):
+    """Instructs Twilio to record the ongoing call."""
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and call_sid):
+        return
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Calls/{call_sid}/Recordings.json"
+    auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    data = {
+        "RecordingStatusCallback": callback_url,
+        "RecordingStatusCallbackEvent": "completed",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(url, auth=auth, data=data)
+            if resp.status_code in (200, 201):
+                logger.info("Twilio call recording initiated successfully for %s", call_sid)
+            else:
+                logger.warning("Twilio recording start returned %s: %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Failed to start Twilio call recording: %s", e)
+
+@app.post("/recording-callback")
+async def recording_callback(request: Request):
+    """Twilio webhook when call recording is processed and ready."""
+    try:
+        form = await request.form()
+        call_sid = form.get("CallSid")
+        recording_sid = form.get("RecordingSid")
+        logger.info("Twilio recording callback received: CallSid=%s, RecordingSid=%s", call_sid, recording_sid)
+        if call_sid and recording_sid:
+            host = request.headers.get("host", "localhost:8000")
+            proto = "https" if "ngrok" in host else "http"
+            audio_url = f"{proto}://{host}/api/recordings/{recording_sid}.mp3"
+
+            await send_dashboard_webhook("call-ended", {
+                "callId": call_sid,
+                "recordingUrl": audio_url
+            })
+    except Exception as e:
+        logger.warning("Error handling recording callback: %s", e)
+    return Response(status_code=200)
+
+@app.get("/api/recordings/{recording_sid}.mp3")
+async def proxy_recording(recording_sid: str):
+    """Streams Twilio call recording to the browser dashboard using account credentials."""
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN):
+        return Response(status_code=403)
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Recordings/{recording_sid}.mp3"
+    auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, auth=auth)
+            if resp.status_code == 200:
+                return Response(content=resp.content, media_type="audio/mpeg")
+            return Response(status_code=resp.status_code)
+    except Exception as e:
+        logger.error("Error streaming recording from Twilio: %s", e)
+        return Response(status_code=500)
+
 @app.post("/incoming-call")
 async def incoming_call(request: Request):
     """Twilio Voice Webhook: Instructs Twilio to open a bidirectional Media Stream."""
     host = request.headers.get("host", "localhost")
+    try:
+        form = await request.form()
+        call_sid = form.get("CallSid")
+        caller_phone = form.get("From")
+        if call_sid and caller_phone:
+            CALL_CALLER_PHONES[call_sid] = caller_phone
+            logger.info("Incoming Twilio call from %s (CallSid: %s)", caller_phone, call_sid)
+
+            # Initiate call recording
+            cb_proto = "https" if request.url.scheme == "https" or "ngrok" in host else "http"
+            recording_cb = f"{cb_proto}://{host}/recording-callback"
+            asyncio.create_task(start_twilio_call_recording(call_sid, recording_cb))
+    except Exception as e:
+        logger.warning("Could not parse form from incoming call: %s", e)
+
     ws_protocol = "wss" if request.url.scheme == "https" or "ngrok" in host else "ws"
     stream_url = f"{ws_protocol}://{host}/media-stream"
 
@@ -245,6 +375,107 @@ async def hangup_call(call_sid: str):
     except Exception as e:
         logger.error("Failed to hang up Twilio call %s: %s", call_sid, e)
 
+# n8n Webhook Endpoints
+N8N_LOOKUP_URL = os.getenv("N8N_LOOKUP_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-patient-lookup")
+N8N_AVAIL_URL = os.getenv("N8N_AVAILABILITY_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-check-availability")
+N8N_SAVE_URL = os.getenv("N8N_SAVE_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-save-appointment")
+
+def build_twilio_agent_settings() -> dict:
+    return {
+        "type": "Settings",
+        "audio": {
+            "input": {"encoding": "mulaw", "sample_rate": 8000},
+            "output": {"encoding": "mulaw", "sample_rate": 8000, "container": "none"}
+        },
+        "agent": {
+            "language": "en",
+            "listen": {
+                # eot_threshold only works on Flux (v2); 0.85 = wait for higher confidence before ending caller's turn
+                "provider": {"type": "deepgram", "version": "v2", "model": "flux-general-en", "eot_threshold": 0.85}
+            },
+            "think": {
+                "provider": {
+                    "type": "open_ai",
+                    "model": "gpt-4o-mini"
+                },
+                "prompt": get_system_prompt(),
+                "functions": [
+                    {
+                        "name": "vapi-check-availability",
+                        "description": "Checks clinic availability for an appointment date and time. Invoke immediately when the caller specifies a preferred date and time.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "appointment_date": {"type": "string", "description": "Date in YYYY-MM-DD format."},
+                                "appointment_time": {"type": "string", "description": "Requested time within clinic hours (e.g. '10:30 AM', '3:00 PM')."}
+                            },
+                            "required": ["appointment_date", "appointment_time"]
+                        },
+                        "endpoint": {
+                            "url": N8N_AVAIL_URL,
+                            "method": "POST",
+                            "headers": {"Content-Type": "application/json"}
+                        }
+                    },
+                    {
+                        "name": "Vapi-Patient-Lookup",
+                        "description": "Looks up returning patient record using digits-only phone number. Invoke immediately when an existing patient provides their phone number.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "phone": {"type": "string", "description": "Digits-only callback phone number."}
+                            },
+                            "required": ["phone"]
+                        },
+                        "endpoint": {
+                            "url": N8N_LOOKUP_URL,
+                            "method": "POST",
+                            "headers": {"Content-Type": "application/json"}
+                        }
+                    },
+                    {
+                        "name": "Vapi-save-appointment",
+                        "description": "Saves booked appointment in clinic system. Invoke immediately after slot and insurance confirmation to finalize booking.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "patient_name": {"type": "string", "description": "Full name of patient"},
+                                "phone": {"type": "string", "description": "Digits-only phone"},
+                                "area_of_concern": {"type": "string", "description": "Pain or injury area"},
+                                "appointment_day": {"type": "string", "description": "Day of week"},
+                                "appointment_date": {"type": "string", "description": "Date in YYYY-MM-DD"},
+                                "appointment_time": {"type": "string", "description": "Confirmed time"},
+                                "insurance_company": {"type": "string", "description": "Insurance provider or 'None'"}
+                            },
+                            "required": [
+                                "patient_name", "phone", "area_of_concern",
+                                "appointment_day", "appointment_date",
+                                "appointment_time", "insurance_company"
+                            ]
+                        },
+                        "endpoint": {
+                            "url": N8N_SAVE_URL,
+                            "method": "POST",
+                            "headers": {"Content-Type": "application/json"}
+                        }
+                    },
+                    {
+                        "name": "end_after_reception",
+                        "description": "Ends the phone call after the final closing statement has been spoken.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }
+                ]
+            },
+            "speak": {
+                "provider": {"type": "deepgram", "model": "aura-asteria-en"}
+            },
+            "greeting": OPENING_GREETING
+        }
+    }
+
 @app.websocket("/media-stream")
 async def media_stream(websocket: WebSocket):
     await websocket.accept()
@@ -252,113 +483,146 @@ async def media_stream(websocket: WebSocket):
 
     stream_sid = None
     call_sid = None
+    caller_phone = None
+    call_start_time = None
+    saved_booking = None
     dg_socket = None
-    should_end_call = False
-    state: Dict[str, Any] = {}
+    audio_buffer = bytearray()
+    stop_event = asyncio.Event()
 
-    # Initialize conversation state with dynamic Toronto date/time prompt
-    messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": get_system_prompt(state)}
-    ]
+    dg_url = "wss://agent.deepgram.com/v1/agent/converse"
+    headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
+
+    async def run_twilio_sender():
+        """Smoothly paces telephony frames to Twilio at real-time 8kHz mulaw rate to eliminate choppy cuts."""
+        nonlocal audio_buffer, stream_sid
+        try:
+            while not stop_event.is_set():
+                if stream_sid and len(audio_buffer) >= 320:
+                    frame = bytes(audio_buffer[:320])
+                    del audio_buffer[:320]
+                    payload = base64.b64encode(frame).decode("utf-8")
+                    await websocket.send_text(json.dumps({
+                        "event": "media",
+                        "streamSid": stream_sid,
+                        "media": {"payload": payload}
+                    }))
+                    # 320 bytes @ 8000Hz = 40ms. Sleep 38ms so Twilio jitter buffer remains full and continuous.
+                    await asyncio.sleep(0.038)
+                else:
+                    await asyncio.sleep(0.005)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug("Twilio sender stopped: %s", e)
 
     async def run_dg_receive():
-        """Listens for transcripts from Deepgram Live STT WebSocket."""
-        nonlocal should_end_call
+        """Listens for audio frames & events from Deepgram Voice Agent API."""
+        nonlocal call_sid, stream_sid, saved_booking, audio_buffer
         try:
             async for raw in dg_socket:
-                data = json.loads(raw)
-                if data.get("type") != "Results":
-                    continue
-                channel = data.get("channel", {})
-                alts = channel.get("alternatives", [])
-                if not alts:
-                    continue
-                transcript = alts[0].get("transcript", "").strip()
-                is_final = data.get("is_final", False)
-                speech_final = data.get("speech_final", False)
+                if isinstance(raw, bytes):
+                    # Buffer audio for real-time paced telephony streaming to Twilio
+                    audio_buffer.extend(raw)
+                else:
+                    data = json.loads(raw)
+                    msg_type = data.get("type", "")
 
-                if transcript and (is_final or speech_final):
-                    logger.info("Caller said: %s", transcript)
+                    if msg_type == "UserStartedSpeaking":
+                        # Caller spoke: clear remaining unstreamed buffer so new turn starts fresh
+                        audio_buffer.clear()
 
-                    # Barge-in: clear Twilio's audio playback queue if caller speaks
-                    if stream_sid:
-                        await websocket.send_text(json.dumps({
-                            "event": "clear",
-                            "streamSid": stream_sid
-                        }))
+                    elif msg_type == "AgentAudioDone":
+                        pass
 
-                    # Append user message and update state
-                    messages.append({"role": "user", "content": transcript})
-                    retry = update_state(state, transcript)
+                    elif msg_type == "ConversationText":
+                        role = data.get("role", "assistant")
+                        content = data.get("content", "").strip()
+                        if role == "user":
+                            logger.info("Caller said: %s", content)
+                        else:
+                            logger.info("Hannah said: %s", content)
 
-                    # Maintain sliding window to protect LFM context budget on VPS
-                    if len(messages) > MAX_HISTORY_MESSAGES:
-                        # Keep system prompt at [0], slice the tail
-                        system_msg = messages[0]
-                        recent = messages[-(MAX_HISTORY_MESSAGES - 1):]
-                        messages.clear()
-                        messages.append(system_msg)
-                        messages.extend(recent)
+                        # Telemetry Webhook: Transcript turn
+                        if call_sid and content:
+                            role_mapped = "caller" if role == "user" else "agent"
+                            asyncio.create_task(send_dashboard_webhook("transcript", {
+                                "callId": call_sid,
+                                "role": role_mapped,
+                                "text": content,
+                            }))
 
-                    # Update system prompt with fresh conversation state
-                    messages[0]["content"] = get_system_prompt(state, retry)
+                    elif msg_type == "FunctionCallRequest":
+                        fn_list = data.get("functions")
+                        if not fn_list:
+                            fn_list = [{
+                                "id": data.get("id") or data.get("function_call_id") or data.get("call_id"),
+                                "name": data.get("name") or data.get("function_name"),
+                                "arguments": data.get("arguments") or data.get("input") or {}
+                            }]
 
-                    # LLM completion loop (handles tool calls)
-                    while True:
-                        active = allowed_tools(state)
-                        ai_msg = await query_brain(messages, tools=active)
-                        messages.append(ai_msg)
+                        for item in fn_list:
+                            fn_id = item.get("id")
+                            fn_name = item.get("name")
+                            raw_args = item.get("arguments") or {}
+                            fn_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
 
-                        tool_calls = ai_msg.get("tool_calls")
-                        if not tool_calls:
-                            reply_text = ai_msg.get("content", "").strip()
-                            reply_text = re.sub(r'^(Hannah|Assistant):\s*', '', reply_text, flags=re.IGNORECASE)
-                            reply_text = re.sub(r'\[.*?\]', '', reply_text).strip()
-                            if reply_text and stream_sid:
-                                await send_tts_audio(websocket, stream_sid, reply_text)
-                            break
+                            logger.info("Executing tool: %s with args: %s", fn_name, fn_args)
+                            t_start = time.time()
+                            result = execute_tool(fn_name, fn_args)
+                            fn_duration_ms = int((time.time() - t_start) * 1000)
 
-                        # Process tool calls
-                        for tool in tool_calls:
-                            t_id = tool.get("id", "call_1")
-                            fn = tool.get("function", {})
-                            fn_name = fn.get("name")
-                            fn_args = {}
-                            try:
-                                fn_args = json.loads(fn.get("arguments", "{}"))
-                            except Exception:
-                                pass
+                            if fn_name == "Vapi-save-appointment":
+                                saved_booking = fn_args
 
-                            if fn_name == "end_after_reception":
-                                should_end_call = True
+                            # Telemetry Webhook: Tool Event
+                            if call_sid:
+                                asyncio.create_task(send_dashboard_webhook("tool-event", {
+                                    "callId": call_sid,
+                                    "toolName": fn_name,
+                                    "arguments": fn_args,
+                                    "result": result,
+                                    "durationMs": fn_duration_ms,
+                                    "success": True,
+                                }))
 
-                            result = execute_tool(fn_name, fn_args, state=state)
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": t_id,
+                            resp = {
+                                "type": "FunctionCallResponse",
                                 "name": fn_name,
                                 "content": json.dumps(result)
-                            })
+                            }
+                            if fn_id:
+                                resp["id"] = fn_id
+                            await dg_socket.send(json.dumps(resp))
 
-                    if should_end_call and call_sid:
-                        await asyncio.sleep(2.5)  # Allow final audio to finish playing
-                        await hangup_call(call_sid)
-                        await websocket.close()
-                        break
+                            if fn_name in ("end_after_reception", "end_call"):
+                                async def delayed_hangup():
+                                    await asyncio.sleep(3.5)
+                                    if call_sid:
+                                        await hangup_call(call_sid)
+                                    stop_event.set()
+                                asyncio.create_task(delayed_hangup())
+
         except websockets.exceptions.ConnectionClosed:
             pass
         except Exception as e:
-            logger.error("Deepgram receive loop error: %s", e)
-
-    dg_url = "wss://api.deepgram.com/v1/listen?encoding=mulaw&sample_rate=8000&channels=1&endpointing=300&interim_results=true"
-    dg_headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
+            logger.error("Deepgram Agent receive error: %s", e)
 
     try:
-        async with websockets.connect(dg_url, extra_headers=dg_headers) as deepgram_ws:
+        import inspect
+        sig = inspect.signature(websockets.connect)
+        hdr_key = "additional_headers" if "additional_headers" in sig.parameters else "extra_headers"
+        connect_opts = {hdr_key: headers, "family": socket.AF_INET}
+        async with websockets.connect(dg_url, **connect_opts) as deepgram_ws:
             dg_socket = deepgram_ws
-            dg_task = asyncio.create_task(run_dg_receive())
+            settings = build_twilio_agent_settings()
+            await dg_socket.send(json.dumps(settings))
+            logger.info("Deepgram Voice Agent API initialized for Twilio call")
 
-            while True:
+            dg_task = asyncio.create_task(run_dg_receive())
+            sender_task = asyncio.create_task(run_twilio_sender())
+
+            while not stop_event.is_set():
                 msg_text = await websocket.receive_text()
                 event_data = json.loads(msg_text)
                 event_type = event_data.get("event")
@@ -367,11 +631,16 @@ async def media_stream(websocket: WebSocket):
                     start_data = event_data.get("start", {})
                     stream_sid = start_data.get("streamSid")
                     call_sid = start_data.get("callSid")
-                    logger.info("Stream started. streamSid=%s, callSid=%s", stream_sid, call_sid)
+                    call_start_time = time.time()
+                    caller_phone = CALL_CALLER_PHONES.get(call_sid, "Unknown")
+                    logger.info("Stream started. streamSid=%s, callSid=%s, callerPhone=%s", stream_sid, call_sid, caller_phone)
 
-                    # Speak configured opening greeting immediately
-                    messages.append({"role": "assistant", "content": OPENING_GREETING})
-                    asyncio.create_task(send_tts_audio(websocket, stream_sid, OPENING_GREETING))
+                    # Telemetry Webhook: Call Started
+                    asyncio.create_task(send_dashboard_webhook("call-started", {
+                        "callId": call_sid,
+                        "callerPhone": caller_phone,
+                        "startedAt": datetime.now(timezone.utc).isoformat(),
+                    }))
 
                 elif event_type == "media":
                     media_payload = event_data.get("media", {}).get("payload")
@@ -384,13 +653,51 @@ async def media_stream(websocket: WebSocket):
                     break
 
             dg_task.cancel()
+            sender_task.cancel()
     except WebSocketDisconnect:
         logger.info("Twilio client disconnected.")
     except Exception as e:
         logger.error("Media stream error: %s", e)
     finally:
-        if dg_socket and not dg_socket.closed:
-            await dg_socket.close()
+        # Telemetry Webhook: Call Ended & AI Enrichment
+        if call_sid:
+            duration_s = int(time.time() - call_start_time) if call_start_time else 0
+            end_payload: Dict[str, Any] = {
+                "callId": call_sid,
+                "durationSeconds": duration_s,
+                "status": "completed",
+            }
+            if saved_booking:
+                if saved_booking.get("patient_name"):
+                    end_payload["patientName"] = saved_booking.get("patient_name")
+                if saved_booking.get("phone"):
+                    end_payload["callerPhone"] = saved_booking.get("phone")
+                appt_date = saved_booking.get("appointment_date", "")
+                appt_time = saved_booking.get("appointment_time", "")
+                iso_start = format_appointment_iso(appt_date, appt_time)
+                has_insurance = bool(saved_booking.get("insurance_company") and saved_booking.get("insurance_company").lower() != "none")
+                end_payload["appointment"] = {
+                    "startsAt": iso_start,
+                    "type": "initial",
+                    "insuranceDirectBilling": has_insurance,
+                    "status": "booked"
+                }
+                if saved_booking.get("area_of_concern"):
+                    end_payload["complaint"] = {
+                        "bodyArea": saved_booking.get("area_of_concern"),
+                        "description": f"Caller reported: {saved_booking.get('area_of_concern')}",
+                        "severity": 3
+                    }
+            try:
+                await send_dashboard_webhook("call-ended", end_payload)
+            except Exception as e:
+                logger.warning("Failed to send call-ended webhook: %s", e)
+
+        if dg_socket:
+            try:
+                await dg_socket.close()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     import uvicorn

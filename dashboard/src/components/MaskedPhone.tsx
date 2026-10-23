@@ -24,3 +24,5 @@ export function MaskedPhone({ phone }: { phone: string }) {
     </span>
   );
 }
+
+export default MaskedPhone;

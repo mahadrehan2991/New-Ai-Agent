@@ -35,8 +35,9 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/");
-      router.refresh();
+      const params = new URLSearchParams(window.location.search);
+      const dest = params.get("from") || "/";
+      window.location.href = dest;
     } catch (err) {
       setError("Network error. Please try again.");
       setLoading(false);
