@@ -487,69 +487,35 @@ async def media_stream(websocket: WebSocket):
     call_start_time = None
     saved_booking = None
     dg_socket = None
-    audio_buffer = bytearray()
+    pending_greeting_chunks: List[bytes] = []
     stop_event = asyncio.Event()
 
     dg_url = "wss://agent.deepgram.com/v1/agent/converse"
     headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
 
-    async def run_twilio_sender():
-        """Smoothly paces telephony frames to Twilio at real-time 8kHz mulaw rate to eliminate choppy cuts."""
-        nonlocal audio_buffer, stream_sid
-        primed = False
-        try:
-            while not stop_event.is_set():
-                if stream_sid and not primed:
-                    # G.711 mu-law silence byte is 0xFF. Stream ~700ms of silence (18 frames @ 40ms)
-                    # to prime Twilio's RTP buffer & allow caller's earpiece/carrier audio bridge to open.
-                    silence_frame = b"\xff" * 320
-                    silence_payload = base64.b64encode(silence_frame).decode("utf-8")
-                    for _ in range(18):
-                        if stop_event.is_set() or not stream_sid:
-                            break
-                        await websocket.send_text(json.dumps({
-                            "event": "media",
-                            "streamSid": stream_sid,
-                            "media": {"payload": silence_payload}
-                        }))
-                        await asyncio.sleep(0.038)
-                    primed = True
-
-                if stream_sid and len(audio_buffer) >= 320:
-                    frame = bytes(audio_buffer[:320])
-                    del audio_buffer[:320]
-                    payload = base64.b64encode(frame).decode("utf-8")
-                    await websocket.send_text(json.dumps({
-                        "event": "media",
-                        "streamSid": stream_sid,
-                        "media": {"payload": payload}
-                    }))
-                    # 320 bytes @ 8000Hz = 40ms. Sleep 38ms so Twilio jitter buffer remains full and continuous.
-                    await asyncio.sleep(0.038)
-                else:
-                    await asyncio.sleep(0.005)
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.debug("Twilio sender stopped: %s", e)
-
     async def run_dg_receive():
         """Listens for audio frames & events from Deepgram Voice Agent API."""
-        nonlocal call_sid, stream_sid, saved_booking, audio_buffer, call_start_time
+        nonlocal call_sid, stream_sid, saved_booking, call_start_time
         try:
             async for raw in dg_socket:
                 if isinstance(raw, bytes):
-                    # Buffer audio for real-time paced telephony streaming to Twilio
-                    audio_buffer.extend(raw)
+                    if stream_sid:
+                        payload = base64.b64encode(raw).decode("utf-8")
+                        await websocket.send_text(json.dumps({
+                            "event": "media",
+                            "streamSid": stream_sid,
+                            "media": {"payload": payload}
+                        }))
+                    else:
+                        pending_greeting_chunks.append(raw)
                 else:
                     data = json.loads(raw)
                     msg_type = data.get("type", "")
 
                     if msg_type == "UserStartedSpeaking":
-                        # Prevent initial line rustle/pickup noise in first 4.5s from truncating Hannah's greeting
+                        # After the opening greeting (7s), flush Twilio's playback queue on barge-in
                         now = time.time()
-                        if call_start_time and (now - call_start_time) > 4.5:
-                            audio_buffer.clear()
+                        if call_start_time and (now - call_start_time) > 7.0:
                             if stream_sid:
                                 try:
                                     await websocket.send_text(json.dumps({
@@ -647,7 +613,6 @@ async def media_stream(websocket: WebSocket):
             logger.info("Deepgram Voice Agent API initialized for Twilio call")
 
             dg_task = asyncio.create_task(run_dg_receive())
-            sender_task = asyncio.create_task(run_twilio_sender())
 
             while not stop_event.is_set():
                 msg_text = await websocket.receive_text()
@@ -662,6 +627,16 @@ async def media_stream(websocket: WebSocket):
                     caller_phone = CALL_CALLER_PHONES.get(call_sid, "Unknown")
                     logger.info("Stream started. streamSid=%s, callSid=%s, callerPhone=%s", stream_sid, call_sid, caller_phone)
 
+                    # Flush any greeting frames generated before streamSid arrived
+                    while pending_greeting_chunks:
+                        chunk = pending_greeting_chunks.pop(0)
+                        payload = base64.b64encode(chunk).decode("utf-8")
+                        await websocket.send_text(json.dumps({
+                            "event": "media",
+                            "streamSid": stream_sid,
+                            "media": {"payload": payload}
+                        }))
+
                     # Telemetry Webhook: Call Started
                     asyncio.create_task(send_dashboard_webhook("call-started", {
                         "callId": call_sid,
@@ -672,8 +647,8 @@ async def media_stream(websocket: WebSocket):
                 elif event_type == "media":
                     media_payload = event_data.get("media", {}).get("payload")
                     if media_payload and dg_socket:
-                        # Ignore initial handset pickup rustle/line noise during the first 1.2s
-                        if call_start_time and (time.time() - call_start_time) < 1.2:
+                        # Mute caller mic during opening greeting (first 6.5s) to eliminate acoustic echo feedback
+                        if call_start_time and (time.time() - call_start_time) < 6.5:
                             continue
                         audio_bytes = base64.b64decode(media_payload)
                         await dg_socket.send(audio_bytes)
@@ -683,7 +658,6 @@ async def media_stream(websocket: WebSocket):
                     break
 
             dg_task.cancel()
-            sender_task.cancel()
     except WebSocketDisconnect:
         logger.info("Twilio client disconnected.")
     except Exception as e:

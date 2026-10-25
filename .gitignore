@@ -6,6 +6,7 @@
 # Distribution & Standalone exports
 *.zip
 voice_agent_standalone/
+ngrok.exe
 
 # Scratch & Debug scripts
 check_login.py
