@@ -8,3 +8,5 @@ __pycache__
 .pytest_cache
 .vscode
 .agents
+dashboard/node_modules
+dashboard/.next

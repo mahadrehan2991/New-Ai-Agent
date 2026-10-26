@@ -1,7 +1,9 @@
 services:
   voice-agent:
-    build: .
-    container_name: hannah-voice-agent
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: justine-voice-agent
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -9,8 +11,27 @@ services:
       - .env
     environment:
       - PORT=8000
+      - DASHBOARD_URL=http://dashboard:3000
+    depends_on:
+      - dashboard
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: justine-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./dashboard/.env
+    environment:
+      - PORT=3000
+      - DATABASE_URL=file:/app/prisma/dev.db
+    volumes:
+      - ./dashboard/prisma:/app/prisma
