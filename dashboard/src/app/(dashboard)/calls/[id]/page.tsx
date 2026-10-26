@@ -337,7 +337,7 @@ export default async function CallDetailPage({
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 Multi-Turn Call Transcript ({call.transcriptTurns.length} turns)
               </h3>
-              <span className="text-xs text-slate-400">Hannah (Receptionist) & Caller</span>
+              <span className="text-xs text-slate-400">Justine (Receptionist) & Caller</span>
             </div>
 
             {call.transcriptTurns.length === 0 ? (
@@ -369,7 +369,7 @@ export default async function CallDetailPage({
                         }`}
                       >
                         <div className="flex items-center justify-between gap-4 text-[10px] font-semibold text-slate-400">
-                          <span>{isAgent ? "Hannah (Reception)" : "Caller"}</span>
+                          <span>{isAgent ? "Justine (Reception)" : "Caller"}</span>
                           <span>
                             {new Date(turn.timestamp).toLocaleTimeString([], {
                               hour: "2-digit",

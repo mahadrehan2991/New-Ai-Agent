@@ -160,7 +160,7 @@ function heuristicEnrichment(turns: TranscriptTurnInput[]): EnrichmentResult {
         const lower = t.text.toLowerCase();
         if (lower.includes("first name") && next.role === "caller") {
           const cleaned = next.text
-            .replace(/(?i)\b(my|first|name|is|it's|its|i am|i'm|this|call|me)\b/gi, "")
+            .replace(/\b(my|first|name|is|it's|its|i am|i'm|this|call|me)\b/gi, "")
             .trim();
           const words = cleaned.split(/[,.\s]+/);
           const rawFirst = words[0]?.replace(/[^a-zA-Z]/g, "");
@@ -170,7 +170,7 @@ function heuristicEnrichment(turns: TranscriptTurnInput[]): EnrichmentResult {
           }
         } else if (lower.includes("last name") && next.role === "caller") {
           const cleaned = next.text
-            .replace(/(?i)\b(my|last|name|is|it's|its|i am|i'm|this)\b/gi, "")
+            .replace(/\b(my|last|name|is|it's|its|i am|i'm|this)\b/gi, "")
             .trim();
           const words = cleaned.split(/[,.\s]+/);
           const rawLast = words[0]?.replace(/[^a-zA-Z]/g, "");

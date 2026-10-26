@@ -121,11 +121,11 @@ export async function POST(req: Request) {
       enrichmentName = enrichment.extractedName;
     }
 
-    // Default outcome if not set - never overwrite "booked" if an appointment exists
-    if (!outcome) {
-      if (providedAppointment || (existingCall?.appointments && existingCall.appointments.length > 0)) {
-        outcome = "booked";
-      } else if (existingCall?.outcome && existingCall.outcome !== "no_booking") {
+    // Never overwrite or miss "booked" if an appointment exists
+    if (providedAppointment || (existingCall?.appointments && existingCall.appointments.length > 0)) {
+      outcome = "booked";
+    } else if (!outcome) {
+      if (existingCall?.outcome && existingCall.outcome !== "no_booking") {
         outcome = existingCall.outcome as any;
       } else {
         outcome = "no_booking";
