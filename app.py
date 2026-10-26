@@ -182,6 +182,29 @@ def format_appointment_iso(appt_date: str, appt_time: str) -> str:
         pass
     return f"{clean_date}T15:00:00Z"
 
+ROBOCALL_PATTERNS = [
+    r"press (?:one|two|three|four|five|six|seven|eight|nine|zero|\d|star|pound)",
+    r"to replay your message",
+    r"to continue recording",
+    r"to delete and (?:rerecord|re-record)",
+    r"for delivery options",
+    r"to send a fax",
+    r"to cancel this message",
+    r"to send this message",
+    r"record your message (?:after|at) the tone",
+    r"message is too short",
+    r"simply hang up when done",
+    r"leave (?:a|your) message (?:after|at) the tone",
+    r"please leave (?:a|your) message",
+    r"is not available to take your call",
+    r"at the tone please record",
+]
+
+def is_robocall_or_voicemail(text: str) -> bool:
+    if not text:
+        return False
+    return any(re.search(pat, text, re.IGNORECASE) for pat in ROBOCALL_PATTERNS)
+
 async def start_twilio_call_recording(call_sid: str, callback_url: str):
     """Instructs Twilio to record the ongoing call."""
     if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and call_sid):
@@ -537,6 +560,12 @@ async def media_stream(websocket: WebSocket):
                         content = data.get("content", "").strip()
                         if role == "user":
                             logger.info("Caller said: %s", content)
+                            if is_robocall_or_voicemail(content):
+                                logger.warning("Automated voicemail/IVR detected from caller: '%s'. Hanging up immediately.", content)
+                                if call_sid:
+                                    asyncio.create_task(hangup_call(call_sid))
+                                stop_event.set()
+                                break
                         else:
                             logger.info("Justine said: %s", content)
 

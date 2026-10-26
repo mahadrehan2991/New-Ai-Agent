@@ -172,6 +172,16 @@ def test_api_routes():
     assert "<Stream" in twiml_res.text
     assert "/media-stream" in twiml_res.text
 
+def test_robocall_detection():
+    from app import is_robocall_or_voicemail
+    # Test cases provided by user
+    assert is_robocall_or_voicemail("To replay your message, press one. To continue recording, press two.")
+    assert is_robocall_or_voicemail("Message is too short. Record your message after the tone. Simply hang up when done.")
+    assert is_robocall_or_voicemail("For delivery options, press the pound sign.")
+    # Real patient speech should NOT match
+    assert not is_robocall_or_voicemail("Hi, I want to book an appointment for my back pain.")
+    assert not is_robocall_or_voicemail("I am a new patient, my name is John.")
+
 if __name__ == "__main__":
     test_prompt_generation_default()
     test_prompt_generation_with_state()
