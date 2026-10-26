@@ -55,7 +55,7 @@ export function Sidebar() {
 
         <div className="mt-3.5 flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 rounded-lg text-[11px]">
           <span className="font-semibold text-slate-600 dark:text-slate-300">
-            Receptionist: Hannah
+            Receptionist: Justine
           </span>
           <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>

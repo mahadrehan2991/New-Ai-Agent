@@ -58,7 +58,7 @@ app = FastAPI(title="Liquid AI Twilio Voice Agent")
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "agent": "Hannah - Happy Harmony Clinic", "lfm_model": LFM_MODEL}
+    return {"status": "ok", "agent": "Justine - Happy Harmony Clinic", "lfm_model": LFM_MODEL}
 
 @app.get("/simulator", response_class=HTMLResponse)
 async def get_simulator():
@@ -99,7 +99,7 @@ async def api_simulate_voice(request: Request):
         if not tool_calls:
             reply = ai_msg.get("content", "").strip()
             import re
-            reply = re.sub(r'^(Hannah|Assistant):\s*', '', reply, flags=re.IGNORECASE)
+            reply = re.sub(r'^(Justine|Hannah|Assistant):\s*', '', reply, flags=re.IGNORECASE)
             reply = re.sub(r'\[.*?\]', '', reply).strip()
 
             audio_b64 = None
@@ -534,7 +534,7 @@ async def media_stream(websocket: WebSocket):
                         if role == "user":
                             logger.info("Caller said: %s", content)
                         else:
-                            logger.info("Hannah said: %s", content)
+                            logger.info("Justine said: %s", content)
 
                         # Telemetry Webhook: Transcript turn
                         if call_sid and content:

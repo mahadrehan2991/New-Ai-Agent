@@ -44,7 +44,7 @@ async function callLLMProvider(formattedTranscript: string): Promise<EnrichmentR
         messages: [
           {
             role: "system",
-            content: `You are a clinical AI scribe for Happy Harmony Physiotherapy Clinic. Analyze this call transcript between receptionist Hannah and a caller. Output strictly valid JSON with:
+            content: `You are a clinical AI scribe for Happy Harmony Physiotherapy Clinic. Analyze this call transcript between receptionist Justine and a caller. Output strictly valid JSON with:
 - "summary": string (2-3 sentences summarizing caller's purpose, condition, and resolution)
 - "sentiment": "positive" | "neutral" | "negative"
 - "bodyArea": "lower back" | "neck" | "shoulder" | "knee" | "hip" | "other"
@@ -183,7 +183,7 @@ function heuristicEnrichment(turns: TranscriptTurnInput[]): EnrichmentResult {
     }
   }
 
-  const summary = `Caller (${extractedName ? `${extractedName.firstName} ${extractedName.lastName}` : "Patient"}) contacted the clinic regarding ${bodyArea} symptoms (${firstCallerUtterance.slice(0, 80)}). Receptionist Hannah triaged the inquiry. ${
+  const summary = `Caller (${extractedName ? `${extractedName.firstName} ${extractedName.lastName}` : "Patient"}) contacted the clinic regarding ${bodyArea} symptoms (${firstCallerUtterance.slice(0, 80)}). Receptionist Justine triaged the inquiry. ${
     booked ? "An assessment appointment was successfully booked." : "No appointment was finalized on this call."
   }`;
 

@@ -82,7 +82,7 @@ export default function SettingsClient({ webhookSecret }: { webhookSecret: strin
           </h2>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Hannah AI voice agent uses these clinic operational hours to validate patient appointment bookings and after-hours call triage.
+          Justine AI voice agent uses these clinic operational hours to validate patient appointment bookings and after-hours call triage.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2">
@@ -236,7 +236,7 @@ export default function SettingsClient({ webhookSecret }: { webhookSecret: strin
           </div>
           <div>
             <span className="font-semibold text-slate-900 dark:text-white block">AI Receptionist:</span>
-            Hannah (Deepgram Voice Agent API)
+            Justine (Deepgram Voice Agent API)
           </div>
           <div>
             <span className="font-semibold text-slate-900 dark:text-white block">Telephony Carrier:</span>

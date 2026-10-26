@@ -210,8 +210,8 @@ async def run_call():
 
     headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
     print("=" * 60)
-    print("Connecting live call to Hannah at Happy Harmony Clinic...")
-    print("Speak into your microphone. Hannah will reply through your speakers.")
+    print("Connecting live call to Justine at Happy Harmony Clinic...")
+    print("Speak into your microphone. Justine will reply through your speakers.")
     print("Press Ctrl+C to hang up.")
     print("=" * 60 + "\n")
 
@@ -255,7 +255,7 @@ async def run_call():
         # 1. Send Agent Settings
         settings = build_agent_settings()
         await ws.send(json.dumps(settings))
-        print("[Call Connected] Hannah is on the line!\n")
+        print("[Call Connected] Justine is on the line!\n")
 
         loop = asyncio.get_running_loop()
 
@@ -275,7 +275,7 @@ async def run_call():
                 if not stop_event.is_set():
                     print(f"\n[Mic error]: {err}")
 
-        # Task 2: Receive Hannah's audio & events from Deepgram
+        # Task 2: Receive Justine's audio & events from Deepgram
         async def receive_loop():
             nonlocal saved_booking
             try:
@@ -293,7 +293,7 @@ async def run_call():
                             if role == "user":
                                 print(f"Caller (You): {content}")
                             else:
-                                print(f"Hannah: {content}")
+                                print(f"Justine: {content}")
                                 if "take care" in content.lower() and "happy harmony" in content.lower():
                                     async def delayed_hangup():
                                         await asyncio.sleep(4.0)  # Wait for voice playback to finish

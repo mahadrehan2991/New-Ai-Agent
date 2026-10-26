@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Happy Harmony Clinic - AI Voice Receptionist Dashboard",
-  description: "Live staff review dashboard for Hannah AI Receptionist at Happy Harmony Physiotherapy & Spine Rehabilitation Clinic in London, Ontario.",
+  description: "Live staff review dashboard for Justine AI Receptionist at Happy Harmony Physiotherapy & Spine Rehabilitation Clinic in London, Ontario.",
 };
 
 export default function RootLayout({

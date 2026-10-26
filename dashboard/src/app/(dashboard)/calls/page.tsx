@@ -53,7 +53,7 @@ export default async function CallsPage() {
             </h1>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Review Hannah receptionist voice interactions, outcomes, and automated triage records.
+            Review Justine receptionist voice interactions, outcomes, and automated triage records.
           </p>
         </div>
       </div>
