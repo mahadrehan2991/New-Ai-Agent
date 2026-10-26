@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 import asyncio
 import httpx
 import websockets
-import pyaudio
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
 from dotenv import load_dotenv
 from prompt import get_system_prompt, OPENING_GREETING
 from tools import execute_tool

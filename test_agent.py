@@ -7,7 +7,7 @@ from app import app
 def test_prompt_generation_default():
     prompt = get_system_prompt()
     assert "America/Toronto" in prompt
-    assert "Hannah" in prompt
+    assert "Justine" in prompt
     assert "Happy Harmony Physiotherapy" in prompt
     assert "COLLECTED: nothing yet" in prompt
     assert "NEXT_STEP: Ask: \"Are you a new patient" in prompt
