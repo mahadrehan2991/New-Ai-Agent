@@ -80,8 +80,23 @@ export async function POST(req: Request) {
       include: {
         transcriptTurns: { orderBy: { timestamp: "asc" } },
         patient: true,
+        appointments: true,
       },
     });
+
+    // If this is merely a late Twilio recording callback, simply save the recordingUrl without modifying patient or outcome
+    if (recordingUrl && !providedAppointment && !providedPatientName && durationSeconds === undefined && existingCall) {
+      const updated = await prisma.call.update({
+        where: { id: callId },
+        data: { recordingUrl },
+      });
+      return NextResponse.json({
+        success: true,
+        callId: updated.id,
+        recordingUrl: updated.recordingUrl,
+        message: "Recording URL attached to existing call.",
+      });
+    }
 
     const turns = existingCall?.transcriptTurns || [];
 
@@ -106,10 +121,15 @@ export async function POST(req: Request) {
       enrichmentName = enrichment.extractedName;
     }
 
-    // Default outcome if not set
+    // Default outcome if not set - never overwrite "booked" if an appointment exists
     if (!outcome) {
-      if (providedAppointment) outcome = "booked";
-      else outcome = "no_booking";
+      if (providedAppointment || (existingCall?.appointments && existingCall.appointments.length > 0)) {
+        outcome = "booked";
+      } else if (existingCall?.outcome && existingCall.outcome !== "no_booking") {
+        outcome = existingCall.outcome as any;
+      } else {
+        outcome = "no_booking";
+      }
     }
 
     // 3. Resolve Patient Name from spoken name or payload
@@ -128,9 +148,21 @@ export async function POST(req: Request) {
       finalLastName = enrichmentName.lastName || "";
     }
 
+    // Guard against erroneous "For Calling" name extraction
+    if (finalFirstName.toLowerCase() === "for" && (finalLastName.toLowerCase() === "calling" || !finalLastName)) {
+      finalFirstName = "";
+      finalLastName = "";
+    }
+
     // 4. Resolve / Create Patient Record
     let patientId = existingCall?.patientId;
     const effectivePhone = providedPhone || existingCall?.callerPhone || "Unknown";
+
+    // If an existing patient already exists and has a real name, don't clear it
+    if (!finalFirstName && existingCall?.patient && existingCall.patient.firstName.toLowerCase() !== "for") {
+      finalFirstName = existingCall.patient.firstName;
+      finalLastName = existingCall.patient.lastName;
+    }
 
     if (finalFirstName) {
       let patient = null;

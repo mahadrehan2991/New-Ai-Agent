@@ -131,39 +131,54 @@ function heuristicEnrichment(turns: TranscriptTurnInput[]): EnrichmentResult {
 
   // 5. Extract caller name if spoken
   let extractedName: { firstName: string; lastName: string } | undefined = undefined;
-  for (let i = 0; i < turns.length - 1; i++) {
-    const t = turns[i];
-    const next = turns[i + 1];
+  const stopWords = new Set(["for", "calling", "so", "much", "very", "all", "our", "choosing", "coming", "reaching", "contacting", "harmony", "physiotherapy"]);
+
+  // Check if agent confirmed full name: "Great, Rory Dillmore" or "Thank you, Amar Smith"
+  for (const t of turns) {
     if (t.role === "agent") {
-      const lower = t.text.toLowerCase();
-      if (lower.includes("first name") && next.role === "caller") {
-        const words = next.text.trim().split(/[,.\s]+/);
-        const rawFirst = words[0]?.replace(/[^a-zA-Z]/g, "");
-        if (rawFirst && rawFirst.length > 1) {
-          extractedName = extractedName || { firstName: rawFirst, lastName: "" };
-          extractedName.firstName = rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
-        }
-      } else if (lower.includes("last name") && next.role === "caller") {
-        const words = next.text.trim().split(/[,.\s]+/);
-        const rawLast = words[0]?.replace(/[^a-zA-Z]/g, "");
-        if (rawLast && rawLast.length > 1) {
-          extractedName = extractedName || { firstName: "Patient", lastName: rawLast };
-          extractedName.lastName = rawLast.charAt(0).toUpperCase() + rawLast.slice(1).toLowerCase();
+      const m = t.text.match(/(?:thank you|great),?\s+([A-Za-z]+)\s+([A-Za-z]+)/i);
+      if (m && m[1] && m[2]) {
+        const w1 = m[1].toLowerCase();
+        const w2 = m[2].toLowerCase();
+        if (!stopWords.has(w1) && !stopWords.has(w2)) {
+          extractedName = {
+            firstName: m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(),
+            lastName: m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase(),
+          };
+          break;
         }
       }
     }
   }
 
-  // Also check if agent confirmed: "Thank you, Sofia Farik" or "Thank you Sofia Farik"
-  for (const t of turns) {
-    if (t.role === "agent") {
-      const m = t.text.match(/thank you,?\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i);
-      if (m && m[1] && m[2]) {
-        extractedName = {
-          firstName: m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(),
-          lastName: m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase(),
-        };
-        break;
+  // If not found from confirmation, extract from direct Q&A turns
+  if (!extractedName) {
+    for (let i = 0; i < turns.length - 1; i++) {
+      const t = turns[i];
+      const next = turns[i + 1];
+      if (t.role === "agent") {
+        const lower = t.text.toLowerCase();
+        if (lower.includes("first name") && next.role === "caller") {
+          const cleaned = next.text
+            .replace(/(?i)\b(my|first|name|is|it's|its|i am|i'm|this|call|me)\b/gi, "")
+            .trim();
+          const words = cleaned.split(/[,.\s]+/);
+          const rawFirst = words[0]?.replace(/[^a-zA-Z]/g, "");
+          if (rawFirst && rawFirst.length > 1 && !stopWords.has(rawFirst.toLowerCase())) {
+            extractedName = extractedName || { firstName: rawFirst, lastName: "" };
+            extractedName.firstName = rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
+          }
+        } else if (lower.includes("last name") && next.role === "caller") {
+          const cleaned = next.text
+            .replace(/(?i)\b(my|last|name|is|it's|its|i am|i'm|this)\b/gi, "")
+            .trim();
+          const words = cleaned.split(/[,.\s]+/);
+          const rawLast = words[0]?.replace(/[^a-zA-Z]/g, "");
+          if (rawLast && rawLast.length > 1 && !stopWords.has(rawLast.toLowerCase())) {
+            extractedName = extractedName || { firstName: "Patient", lastName: rawLast };
+            extractedName.lastName = rawLast.charAt(0).toUpperCase() + rawLast.slice(1).toLowerCase();
+          }
+        }
       }
     }
   }

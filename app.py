@@ -672,6 +672,7 @@ async def media_stream(websocket: WebSocket):
                 "status": "completed",
             }
             if saved_booking:
+                end_payload["outcome"] = "booked"
                 if saved_booking.get("patient_name"):
                     end_payload["patientName"] = saved_booking.get("patient_name")
                 if saved_booking.get("phone"):
