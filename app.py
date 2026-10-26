@@ -212,7 +212,7 @@ async def recording_callback(request: Request):
         logger.info("Twilio recording callback received: CallSid=%s, RecordingSid=%s", call_sid, recording_sid)
         if call_sid and recording_sid:
             host = request.headers.get("host", "localhost:8000")
-            proto = "https" if "ngrok" in host else "http"
+            proto = "https" if ("localhost" not in host and "127.0.0.1" not in host) or "ngrok" in host or "trycloudflare" in host else "http"
             audio_url = f"{proto}://{host}/api/recordings/{recording_sid}.mp3"
 
             await send_dashboard_webhook("call-ended", {
@@ -251,15 +251,19 @@ async def incoming_call(request: Request):
         if call_sid and caller_phone:
             CALL_CALLER_PHONES[call_sid] = caller_phone
             logger.info("Incoming Twilio call from %s (CallSid: %s)", caller_phone, call_sid)
-
-            # Initiate call recording
-            cb_proto = "https" if request.url.scheme == "https" or "ngrok" in host else "http"
-            recording_cb = f"{cb_proto}://{host}/recording-callback"
-            asyncio.create_task(start_twilio_call_recording(call_sid, recording_cb))
     except Exception as e:
         logger.warning("Could not parse form from incoming call: %s", e)
 
-    ws_protocol = "wss" if request.url.scheme == "https" or "ngrok" in host else "ws"
+    # Automatically use wss:// for Cloudflare tunnels, ngrok, or any remote host
+    is_secure = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto") == "https"
+        or "ngrok" in host
+        or "trycloudflare.com" in host
+        or "sslip.io" in host
+        or ("localhost" not in host and "127.0.0.1" not in host)
+    )
+    ws_protocol = "wss" if is_secure else "ws"
     stream_url = f"{ws_protocol}://{host}/media-stream"
 
     twiml = (
@@ -643,6 +647,12 @@ async def media_stream(websocket: WebSocket):
                         "callerPhone": caller_phone,
                         "startedAt": datetime.now(timezone.utc).isoformat(),
                     }))
+
+                    # Initiate Twilio recording now that the media stream is active
+                    ws_host = websocket.headers.get("host", "localhost")
+                    cb_proto = "https" if ("localhost" not in ws_host and "127.0.0.1" not in ws_host) or "trycloudflare" in ws_host or "ngrok" in ws_host else "http"
+                    recording_cb = f"{cb_proto}://{ws_host}/recording-callback"
+                    asyncio.create_task(start_twilio_call_recording(call_sid, recording_cb))
 
                 elif event_type == "media":
                     media_payload = event_data.get("media", {}).get("payload")
