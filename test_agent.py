@@ -182,6 +182,19 @@ def test_robocall_detection():
     assert not is_robocall_or_voicemail("Hi, I want to book an appointment for my back pain.")
     assert not is_robocall_or_voicemail("I am a new patient, my name is John.")
 
+def test_mailer_receptionist_notification():
+    from mailer import send_receptionist_booking_email
+    res = send_receptionist_booking_email({
+        "patient_name": "Arlina Igbav",
+        "phone": "+15487085386",
+        "appointment_day": "Tuesday",
+        "appointment_date": "2026-10-27",
+        "appointment_time": "4:00 PM",
+        "area_of_concern": "Back pain",
+        "insurance_company": "Green Shield"
+    })
+    assert res is True
+
 if __name__ == "__main__":
     test_prompt_generation_default()
     test_prompt_generation_with_state()

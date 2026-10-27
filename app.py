@@ -407,10 +407,10 @@ async def hangup_call(call_sid: str):
     except Exception as e:
         logger.error("Failed to hang up Twilio call %s via REST API: %s", call_sid, e)
 
-# n8n Webhook Endpoints
-N8N_LOOKUP_URL = os.getenv("N8N_LOOKUP_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-patient-lookup")
-N8N_AVAIL_URL = os.getenv("N8N_AVAILABILITY_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-check-availability")
-N8N_SAVE_URL = os.getenv("N8N_SAVE_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-save-appointment")
+# Internal Clinical Endpoints (Direct SQLite & Email)
+CLINICAL_AVAIL_PATH = "/api/clinical/check-availability"
+CLINICAL_LOOKUP_PATH = "/api/clinical/patient-lookup"
+CLINICAL_SAVE_PATH = "/api/clinical/save-appointment"
 
 def build_twilio_agent_settings() -> dict:
     return {
@@ -442,11 +442,6 @@ def build_twilio_agent_settings() -> dict:
                                 "appointment_time": {"type": "string", "description": "Requested time within clinic hours (e.g. '10:30 AM', '3:00 PM')."}
                             },
                             "required": ["appointment_date", "appointment_time"]
-                        },
-                        "endpoint": {
-                            "url": N8N_AVAIL_URL,
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"}
                         }
                     },
                     {
@@ -458,11 +453,6 @@ def build_twilio_agent_settings() -> dict:
                                 "phone": {"type": "string", "description": "Digits-only callback phone number."}
                             },
                             "required": ["phone"]
-                        },
-                        "endpoint": {
-                            "url": N8N_LOOKUP_URL,
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"}
                         }
                     },
                     {
@@ -484,11 +474,6 @@ def build_twilio_agent_settings() -> dict:
                                 "appointment_day", "appointment_date",
                                 "appointment_time", "insurance_company"
                             ]
-                        },
-                        "endpoint": {
-                            "url": N8N_SAVE_URL,
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"}
                         }
                     },
                     {

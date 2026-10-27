@@ -4,9 +4,13 @@ import logging
 from datetime import datetime
 import httpx
 from dotenv import load_dotenv
+from mailer import send_receptionist_booking_email
 
 load_dotenv()
 logger = logging.getLogger("voice_agent.tools")
+
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:3000").rstrip("/")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "whsec_harmony_secret_key_london").strip()
 
 # In-memory storage for appointments and mock patient records
 PATIENT_DB = {
@@ -111,38 +115,35 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
                 state["CONFIRM_AND_BOOK"] = "done"
         return res
 
-    # 1. Forward to n8n Webhook if configured
-    target_url = None
-    lookup_url = os.getenv("N8N_LOOKUP_URL", "").strip() or os.getenv("N8N_WEBHOOK_URL", "").strip()
-    avail_url = os.getenv("N8N_AVAILABILITY_URL", "").strip() or os.getenv("N8N_WEBHOOK_URL", "").strip()
-    save_url = os.getenv("N8N_SAVE_URL", "").strip() or os.getenv("N8N_WEBHOOK_URL", "").strip()
-
-    if name in ("Vapi-Patient-Lookup", "lookup_patient"):
-        target_url = lookup_url
-    elif name in ("vapi-check-availability", "check_clinic_availability"):
-        target_url = avail_url
+    # 1. Forward to Internal Clinical API (Direct SQLite backed, ~2ms)
+    clinical_endpoint = None
+    if name in ("vapi-check-availability", "check_clinic_availability"):
+        clinical_endpoint = f"{DASHBOARD_URL}/api/clinical/check-availability"
+    elif name in ("Vapi-Patient-Lookup", "lookup_patient"):
+        clinical_endpoint = f"{DASHBOARD_URL}/api/clinical/patient-lookup"
     elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
-        target_url = save_url
+        clinical_endpoint = f"{DASHBOARD_URL}/api/clinical/save-appointment"
 
-    if target_url:
+    if clinical_endpoint:
         try:
-            # Send flat fields + parameters object for compatibility with any n8n node
-            payload = {
-                **args_dict,
-                "tool": name,
-                "parameters": args_dict
+            headers = {
+                "Authorization": f"Bearer {WEBHOOK_SECRET}",
+                "Content-Type": "application/json"
             }
-            with httpx.Client(timeout=8.0) as client:
-                res = client.post(target_url, json=payload)
+            with httpx.Client(timeout=4.0) as client:
+                res = client.post(clinical_endpoint, json=args_dict, headers=headers)
                 if res.status_code == 200:
                     data = res.json()
-                    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
-                        data = data[0]
-                    logger.info("n8n response for %s: %s", name, data)
+                    logger.info("Internal clinical API response for %s: %s", name, data)
+                    if name in ("Vapi-save-appointment", "save_clinic_appointment"):
+                        try:
+                            send_receptionist_booking_email(args_dict)
+                        except Exception as em:
+                            logger.error("Failed to send receptionist booking email: %s", em)
                     return _finish(data)
-                logger.warning("n8n webhook returned status %s: %s", res.status_code, res.text)
+                logger.warning("Clinical API returned HTTP %s: %s", res.status_code, res.text)
         except Exception as e:
-            logger.error("n8n webhook connection failed for %s: %s", name, e)
+            logger.warning("Could not reach internal clinical API (%s): %s - falling back to local handler", clinical_endpoint, e)
 
     # 2. Local Fallback handlers (in-memory mock DB)
     if name in ("vapi-check-availability", "check_clinic_availability"):
