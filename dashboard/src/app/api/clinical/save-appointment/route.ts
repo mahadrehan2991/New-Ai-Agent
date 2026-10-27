@@ -106,12 +106,14 @@ export async function POST(req: Request) {
         },
       });
 
-      // Update call status if exists
+      // Update call status immediately
       await prisma.call.updateMany({
         where: { id: call_id },
         data: {
           outcome: "booked",
           patientId: patient.id,
+          callerPhone: cleanPhone !== "Unknown" ? cleanPhone : undefined,
+          summary: `Appointment booked for ${patient.firstName} ${patient.lastName} on ${appointment_day}, ${appointment_date} @ ${appointment_time} (${area_of_concern}).`,
         },
       });
     }

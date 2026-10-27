@@ -608,7 +608,10 @@ async def media_stream(websocket: WebSocket):
 
                             logger.info("Executing tool: %s with args: %s", fn_name, fn_args)
                             t_start = time.time()
-                            result = execute_tool(fn_name, fn_args)
+                            tool_args = dict(fn_args) if isinstance(fn_args, dict) else {}
+                            if call_sid:
+                                tool_args["call_id"] = call_sid
+                            result = execute_tool(fn_name, tool_args)
                             fn_duration_ms = int((time.time() - t_start) * 1000)
 
                             if fn_name in ("save_appointment", "Vapi-save-appointment"):

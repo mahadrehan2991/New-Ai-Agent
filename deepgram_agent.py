@@ -335,7 +335,9 @@ async def run_call():
 
                                 print(f"\n[Clinic Webhook Triggered: {fn_name}({json.dumps(fn_args)})]")
                                 t_start = time.time()
-                                result = execute_tool(fn_name, fn_args)
+                                tool_args = dict(fn_args) if isinstance(fn_args, dict) else {}
+                                tool_args["call_id"] = call_id
+                                result = execute_tool(fn_name, tool_args)
                                 duration_ms = int((time.time() - t_start) * 1000)
                                 print(f"[Clinic Webhook Finished: {json.dumps(result)}]\n")
 
@@ -395,13 +397,17 @@ async def run_call():
         receive_task = asyncio.create_task(receive_loop())
 
         try:
-            await asyncio.gather(mic_task, receive_task)
+            done, pending = await asyncio.wait(
+                [mic_task, receive_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
         finally:
             stop_event.set()
-            mic_task.cancel()
-            receive_task.cancel()
+            for t in (mic_task, receive_task):
+                if not t.done():
+                    t.cancel()
 
             try:
                 playback_queue.put_nowait(None)

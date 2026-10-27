@@ -125,7 +125,12 @@ function heuristicEnrichment(turns: TranscriptTurnInput[]): EnrichmentResult {
   }
 
   // 4. Generate summary
-  const booked = fullText.includes("booked") || fullText.includes("appointment confirmed") || fullText.includes("see you");
+  const booked =
+    fullText.includes("appointment request") ||
+    fullText.includes("received your appointment") ||
+    fullText.includes("booked") ||
+    fullText.includes("appointment confirmed") ||
+    fullText.includes("see you");
   const callerTurns = turns.filter((t) => t.role === "caller");
   const firstCallerUtterance = callerTurns[0]?.text || "inquired about services";
 

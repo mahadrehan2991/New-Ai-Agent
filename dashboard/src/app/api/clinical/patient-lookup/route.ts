@@ -10,6 +10,7 @@ export async function POST(req: Request) {
   }
 
   const rawPhone = body.phone || body.parameters?.phone || "";
+  const call_id = body.call_id || body.parameters?.call_id || null;
   const digits = rawPhone.replace(/\D/g, "");
 
   if (!digits || digits.length < 7) {
@@ -37,6 +38,16 @@ export async function POST(req: Request) {
     });
 
     if (patient) {
+      if (call_id) {
+        await prisma.call.updateMany({
+          where: { id: call_id },
+          data: {
+            patientId: patient.id,
+            callerPhone: patient.phone,
+          },
+        });
+      }
+
       return NextResponse.json({
         found: true,
         patient: {

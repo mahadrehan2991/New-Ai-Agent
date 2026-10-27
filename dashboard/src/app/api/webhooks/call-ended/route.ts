@@ -132,6 +132,10 @@ export async function POST(req: Request) {
       }
     }
 
+    if (outcome === "booked" && summary && summary.includes("No appointment was finalized")) {
+      summary = summary.replace("No appointment was finalized on this call.", "An assessment appointment was successfully booked.");
+    }
+
     // 3. Resolve Patient Name from spoken name or payload
     let finalFirstName = "";
     let finalLastName = "";
