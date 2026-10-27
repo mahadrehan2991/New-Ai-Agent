@@ -89,7 +89,7 @@ export default function LoginPage() {
               />
             </div>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
-              Default development password: <code className="text-teal-600 dark:text-teal-400 font-mono">admin_harmony_2026</code>
+              Enter administrator password to access the clinic reception desk.
             </p>
           </div>
 
