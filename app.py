@@ -295,6 +295,7 @@ async def incoming_call(request: Request):
         '  <Connect>\n'
         f'    <Stream url="{stream_url}" />\n'
         '  </Connect>\n'
+        '  <Hangup />\n'
         '</Response>'
     )
     return Response(content=twiml, media_type="application/xml")
@@ -392,15 +393,19 @@ async def query_brain(messages: List[Dict[str, Any]], tools: Optional[List[Dict[
 async def hangup_call(call_sid: str):
     """Terminates the Twilio call via REST API."""
     if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and call_sid):
+        logger.warning("hangup_call skipped: missing TWILIO_ACCOUNT_SID/AUTH_TOKEN or call_sid=%s", call_sid)
         return
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Calls/{call_sid}.json"
     auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     try:
-        async with httpx.AsyncClient() as client:
-            await client.post(url, auth=auth, data={"Status": "completed"})
-            logger.info("Twilio call %s ended successfully.", call_sid)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(url, auth=auth, data={"Status": "completed"})
+            if resp.status_code in (200, 202):
+                logger.info("Twilio call %s hung up successfully via REST API.", call_sid)
+            else:
+                logger.warning("Twilio hangup for %s returned HTTP %s: %s", call_sid, resp.status_code, resp.text)
     except Exception as e:
-        logger.error("Failed to hang up Twilio call %s: %s", call_sid, e)
+        logger.error("Failed to hang up Twilio call %s via REST API: %s", call_sid, e)
 
 # n8n Webhook Endpoints
 N8N_LOOKUP_URL = os.getenv("N8N_LOOKUP_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-patient-lookup")
@@ -516,6 +521,27 @@ async def media_stream(websocket: WebSocket):
     dg_socket = None
     pending_greeting_chunks: List[bytes] = []
     stop_event = asyncio.Event()
+    hangup_triggered = False
+
+    async def trigger_delayed_hangup(delay_seconds: float = 4.0):
+        nonlocal hangup_triggered
+        if hangup_triggered:
+            return
+        hangup_triggered = True
+        logger.info("Call termination scheduled in %.1fs for call %s", delay_seconds, call_sid)
+        await asyncio.sleep(delay_seconds)
+        if call_sid:
+            await hangup_call(call_sid)
+        stop_event.set()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        if dg_socket:
+            try:
+                await dg_socket.close()
+            except Exception:
+                pass
 
     dg_url = "wss://agent.deepgram.com/v1/agent/converse"
     headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
@@ -562,12 +588,14 @@ async def media_stream(websocket: WebSocket):
                             logger.info("Caller said: %s", content)
                             if is_robocall_or_voicemail(content):
                                 logger.warning("Automated voicemail/IVR detected from caller: '%s'. Hanging up immediately.", content)
-                                if call_sid:
-                                    asyncio.create_task(hangup_call(call_sid))
-                                stop_event.set()
+                                asyncio.create_task(trigger_delayed_hangup(delay_seconds=0.2))
                                 break
                         else:
                             logger.info("Justine said: %s", content)
+                            lower_content = content.lower()
+                            if "take care" in lower_content or ("goodbye" in lower_content and "thank you" in lower_content):
+                                logger.info("Justine closing phrase detected: '%s'. Scheduling automatic hangup.", content)
+                                asyncio.create_task(trigger_delayed_hangup(delay_seconds=4.5))
 
                         # Telemetry Webhook: Transcript turn
                         if call_sid and content:
@@ -622,12 +650,7 @@ async def media_stream(websocket: WebSocket):
                             await dg_socket.send(json.dumps(resp))
 
                             if fn_name in ("end_after_reception", "end_call"):
-                                async def delayed_hangup():
-                                    await asyncio.sleep(3.5)
-                                    if call_sid:
-                                        await hangup_call(call_sid)
-                                    stop_event.set()
-                                asyncio.create_task(delayed_hangup())
+                                asyncio.create_task(trigger_delayed_hangup(delay_seconds=3.5))
 
         except websockets.exceptions.ConnectionClosed:
             pass
