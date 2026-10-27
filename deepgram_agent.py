@@ -54,11 +54,6 @@ async def send_dashboard_webhook(endpoint: str, payload: dict):
     except Exception:
         pass
 
-# n8n Webhook Endpoints
-N8N_LOOKUP_URL = os.getenv("N8N_LOOKUP_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-patient-lookup")
-N8N_AVAIL_URL = os.getenv("N8N_AVAILABILITY_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-check-availability")
-N8N_SAVE_URL = os.getenv("N8N_SAVE_URL", "https://imrant0349t53495834.app.n8n.cloud/webhook/vapi-save-appointment")
-
 # Audio Config
 INPUT_RATE = 16000    # Mic input rate (Hz)
 OUTPUT_RATE = 24000   # Deepgram TTS output rate (Hz)
