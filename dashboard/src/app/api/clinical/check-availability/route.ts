@@ -136,6 +136,9 @@ export async function POST(req: Request) {
 
     if (existingAppointment) {
       return NextResponse.json({
+        available: false,
+        status: "booked",
+        result: `${appointment_date} at ${appointment_time} is already booked. Please suggest a different time.`,
         results: [
           {
             name: "vapi-check-availability",
@@ -147,6 +150,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
+      available: true,
+      status: "available",
+      result: `${appointment_date} at ${appointment_time} is available.`,
       results: [
         {
           name: "vapi-check-availability",

@@ -114,11 +114,6 @@ def build_agent_settings() -> dict:
                                 "appointment_time": {"type": "string", "description": "Requested time within clinic hours (e.g. '10:30 AM', '3:00 PM')."}
                             },
                             "required": ["appointment_date", "appointment_time"]
-                        },
-                        "endpoint": {
-                            "url": N8N_AVAIL_URL,
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"}
                         }
                     },
                     {
@@ -130,11 +125,6 @@ def build_agent_settings() -> dict:
                                 "phone": {"type": "string", "description": "Digits-only callback phone number."}
                             },
                             "required": ["phone"]
-                        },
-                        "endpoint": {
-                            "url": N8N_LOOKUP_URL,
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"}
                         }
                     },
                     {
@@ -156,11 +146,6 @@ def build_agent_settings() -> dict:
                                 "appointment_day", "appointment_date",
                                 "appointment_time", "insurance_company"
                             ]
-                        },
-                        "endpoint": {
-                            "url": N8N_SAVE_URL,
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"}
                         }
                     },
                     {
