@@ -105,7 +105,7 @@ def build_agent_settings() -> dict:
                 "prompt": get_system_prompt(),
                 "functions": [
                     {
-                        "name": "vapi-check-availability",
+                        "name": "check_availability",
                         "description": "Checks clinic availability for an appointment date and time. Call this ONLY after the caller states pain and requests a specific date and time.",
                         "parameters": {
                             "type": "object",
@@ -117,7 +117,7 @@ def build_agent_settings() -> dict:
                         }
                     },
                     {
-                        "name": "Vapi-Patient-Lookup",
+                        "name": "patient_lookup",
                         "description": "Looks up returning patient record using digits-only phone number.",
                         "parameters": {
                             "type": "object",
@@ -128,7 +128,7 @@ def build_agent_settings() -> dict:
                         }
                     },
                     {
-                        "name": "Vapi-save-appointment",
+                        "name": "save_appointment",
                         "description": "Saves booked appointment in clinic system after slot and insurance confirmation.",
                         "parameters": {
                             "type": "object",
@@ -325,7 +325,7 @@ async def run_call():
                                 duration_ms = int((time.time() - t_start) * 1000)
                                 print(f"[Clinic Webhook Finished: {json.dumps(result)}]\n")
 
-                                if fn_name == "Vapi-save-appointment":
+                                if fn_name in ("save_appointment", "Vapi-save-appointment"):
                                     saved_booking = fn_args
 
                                 # Telemetry Webhook: Tool Event

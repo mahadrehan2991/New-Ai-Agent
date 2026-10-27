@@ -82,31 +82,31 @@ def test_allowed_tools_gating():
     tools = allowed_tools(state)
     assert tools is not None
     names = [t["function"]["name"] for t in tools]
-    assert "vapi-check-availability" in names
-    assert "Vapi-save-appointment" not in names
+    assert any(n in names for n in ("check_availability", "vapi-check-availability"))
+    assert not any(n in names for n in ("save_appointment", "Vapi-save-appointment"))
 
     # After insurance: save appointment is exposed
     state["preferred_time"] = "2026-10-23 2:00 PM"
     state["insurance"] = "yes"
     tools = allowed_tools(state)
     names = [t["function"]["name"] for t in tools]
-    assert "Vapi-save-appointment" in names
+    assert any(n in names for n in ("save_appointment", "Vapi-save-appointment"))
 
     # Existing patient with phone: lookup exposed
     existing_state = {"patient_type": "existing", "phone": "15483914156"}
     existing_tools = allowed_tools(existing_state)
     existing_names = [t["function"]["name"] for t in existing_tools]
-    assert "Vapi-Patient-Lookup" in existing_names
+    assert any(n in existing_names for n in ("patient_lookup", "lookup_patient", "Vapi-Patient-Lookup"))
 
 def test_availability_guard_empty_time():
-    res = execute_tool("vapi-check-availability", {"appointment_date": "2026-10-23", "appointment_time": ""})
+    res = execute_tool("check_availability", {"appointment_date": "2026-10-23", "appointment_time": ""})
     assert "No time given yet" in str(res)
 
 def test_tool_definitions():
     tool_names = [t["function"]["name"] for t in TOOL_DEFINITIONS]
-    assert "vapi-check-availability" in tool_names
-    assert "Vapi-Patient-Lookup" in tool_names
-    assert "Vapi-save-appointment" in tool_names
+    assert "check_availability" in tool_names
+    assert "patient_lookup" in tool_names
+    assert "save_appointment" in tool_names
     assert "end_after_reception" in tool_names
 
 def test_get_active_tools():
@@ -115,31 +115,31 @@ def test_get_active_tools():
 
     # User mentions phone digits: lookup active
     tools_phone = get_active_tools([{"role": "user", "content": "my phone is 03302817162"}])
-    assert any(t["function"]["name"] == "Vapi-Patient-Lookup" for t in tools_phone)
+    assert any(t["function"]["name"] in ("patient_lookup", "Vapi-Patient-Lookup") for t in tools_phone)
 
     # User mentions scheduling a day or time: availability active
     tools_avail = get_active_tools([{"role": "user", "content": "free slots on wednesday"}])
-    assert any(t["function"]["name"] == "vapi-check-availability" for t in tools_avail)
+    assert any(t["function"]["name"] in ("check_availability", "vapi-check-availability") for t in tools_avail)
 
     # User confirms: save active
     tools_save = get_active_tools([{"role": "user", "content": "yes that slot works"}])
-    assert any(t["function"]["name"] == "Vapi-save-appointment" for t in tools_save)
+    assert any(t["function"]["name"] in ("save_appointment", "Vapi-save-appointment") for t in tools_save)
 
     # User says goodbye: end active
     tools_end = get_active_tools([{"role": "user", "content": "thank you bye"}])
     assert any(t["function"]["name"] == "end_after_reception" for t in tools_end)
 
 def test_tools_execution():
-    # 1. Availability check (supports both live n8n and mock fallback)
-    avail_res = execute_tool("vapi-check-availability", {"appointment_date": "2026-10-21", "appointment_time": "10:00 AM"})
+    # 1. Availability check (supports both clean name and legacy)
+    avail_res = execute_tool("check_availability", {"appointment_date": "2026-10-21", "appointment_time": "10:00 AM"})
     assert "results" in avail_res or avail_res.get("status") == "available"
 
-    # 2. Patient lookup (supports both live n8n and mock fallback)
-    lookup_res = execute_tool("Vapi-Patient-Lookup", {"phone": "+1 (548) 391-4156"})
+    # 2. Patient lookup (supports both clean name and legacy)
+    lookup_res = execute_tool("patient_lookup", {"phone": "+1 (548) 391-4156"})
     assert "results" in lookup_res or "found" in lookup_res or "patient" in lookup_res
 
-    # 3. Save appointment
-    save_res = execute_tool("Vapi-save-appointment", {
+    # 3. Save appointment (supports both clean name and legacy)
+    save_res = execute_tool("save_appointment", {
         "patient_name": "Jane Doe",
         "phone": "15483914156",
         "area_of_concern": "Lower back pain",

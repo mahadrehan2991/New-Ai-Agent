@@ -27,6 +27,7 @@ export async function POST(req: Request) {
   }
 
   const p = body.parameters || body;
+  const toolName = body.name || p.name || "save_appointment";
   const patient_name = (p.patient_name || "").trim();
   const rawPhone = (p.phone || "").trim();
   const cleanPhone = rawPhone.replace(/\D/g, "") || "Unknown";
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       results: [
         {
-          name: "Vapi-save-appointment",
+          name: toolName,
           toolCallId: "local-call",
           result: "Appointment saved successfully.",
         },
@@ -140,7 +141,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       results: [
         {
-          name: "Vapi-save-appointment",
+          name: toolName,
           toolCallId: "local-call",
           result: "Appointment saved successfully.",
         },

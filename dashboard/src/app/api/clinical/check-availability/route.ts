@@ -31,12 +31,13 @@ export async function POST(req: Request) {
 
   const appointment_date = body.appointment_date || body.parameters?.appointment_date || "";
   const appointment_time = body.appointment_time || body.parameters?.appointment_time || "";
+  const toolName = body.name || "check_availability";
 
   if (!appointment_date) {
     return NextResponse.json({
       results: [
         {
-          name: "vapi-check-availability",
+          name: toolName,
           toolCallId: "local-call",
           result: "Please specify the date you would like to book for.",
         },
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       results: [
         {
-          name: "vapi-check-availability",
+          name: toolName,
           toolCallId: "local-call",
           result: "The clinic is closed on Sundays. Please choose a day between Monday and Saturday.",
         },
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       results: [
         {
-          name: "vapi-check-availability",
+          name: toolName,
           toolCallId: "local-call",
           result: `The clinic is open on ${appointment_date}. What time would you prefer?`,
         },
@@ -79,7 +80,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       results: [
         {
-          name: "vapi-check-availability",
+          name: toolName,
           toolCallId: "local-call",
           result: `Could not recognize time '${appointment_time}'. Please specify a time like 10:00 AM or 3:00 PM.`,
         },
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         results: [
           {
-            name: "vapi-check-availability",
+            name: toolName,
             toolCallId: "local-call",
             result: `${appointment_date} at ${appointment_time} is outside clinic hours. Monday to Friday hours are 10:00 AM to 6:00 PM. Please suggest an alternative time.`,
           },
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         results: [
           {
-            name: "vapi-check-availability",
+            name: toolName,
             toolCallId: "local-call",
             result: `${appointment_date} at ${appointment_time} is outside clinic hours. Saturday hours are 10:00 AM to 2:00 PM. Please suggest an alternative time.`,
           },
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
         result: `${appointment_date} at ${appointment_time} is already booked. Please suggest a different time.`,
         results: [
           {
-            name: "vapi-check-availability",
+            name: toolName,
             toolCallId: "local-call",
             result: `${appointment_date} at ${appointment_time} is already booked. Please suggest a different time.`,
           },
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
       result: `${appointment_date} at ${appointment_time} is available.`,
       results: [
         {
-          name: "vapi-check-availability",
+          name: toolName,
           toolCallId: "local-call",
           result: `${appointment_date} at ${appointment_time} is available.`,
         },
@@ -167,7 +168,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       results: [
         {
-          name: "vapi-check-availability",
+          name: toolName,
           toolCallId: "local-call",
           result: `${appointment_date} at ${appointment_time} is available.`,
         },

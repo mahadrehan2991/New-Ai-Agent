@@ -25,7 +25,7 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "vapi-check-availability",
+            "name": "check_availability",
             "description": "Checks clinic availability for an appointment date (and optional time). Call this whenever the caller asks for available slots, free times, or proposes a date or time.",
             "parameters": {
                 "type": "object",
@@ -46,7 +46,7 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "Vapi-Patient-Lookup",
+            "name": "patient_lookup",
             "description": "Looks up an existing patient record using their digits-only phone number.",
             "parameters": {
                 "type": "object",
@@ -63,7 +63,7 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "Vapi-save-appointment",
+            "name": "save_appointment",
             "description": "Saves and confirms the booked appointment for a patient.",
             "parameters": {
                 "type": "object",
@@ -100,28 +100,28 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
     """Executes the requested tool and returns the result dictionary."""
     logger.info("Executing tool: %s with args: %s", name, args_dict)
 
-    if name in ("vapi-check-availability", "check_clinic_availability") and not args_dict.get("appointment_time", "").strip():
+    if name in ("check_availability", "vapi-check-availability", "check_clinic_availability") and not args_dict.get("appointment_time", "").strip():
         return {"results": [{"name": name, "toolCallId": "local-call", "result": "No time given yet. Ask the caller what time they prefer."}]}
 
     def _finish(res: dict) -> dict:
         if state is not None:
-            if name in ("vapi-check-availability", "check_clinic_availability") and args_dict.get("appointment_time"):
+            if name in ("check_availability", "vapi-check-availability", "check_clinic_availability") and args_dict.get("appointment_time"):
                 state["preferred_time"] = f"{args_dict.get('appointment_date', '')} {args_dict.get('appointment_time', '')}".strip()
-            elif name in ("Vapi-Patient-Lookup", "lookup_patient") and isinstance(res, dict):
+            elif name in ("patient_lookup", "lookup_patient", "Vapi-Patient-Lookup") and isinstance(res, dict):
                 pat = res.get("patient") or {}
                 if isinstance(pat, dict) and pat.get("name"):
                     state["first_name"] = pat["name"]
-            elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
+            elif name in ("save_appointment", "Vapi-save-appointment", "save_clinic_appointment"):
                 state["CONFIRM_AND_BOOK"] = "done"
         return res
 
     # 1. Forward to Internal Clinical API (Direct SQLite backed, ~2ms)
     clinical_endpoint = None
-    if name in ("vapi-check-availability", "check_clinic_availability"):
+    if name in ("check_availability", "vapi-check-availability", "check_clinic_availability"):
         clinical_endpoint = f"{DASHBOARD_URL}/api/clinical/check-availability"
-    elif name in ("Vapi-Patient-Lookup", "lookup_patient"):
+    elif name in ("patient_lookup", "lookup_patient", "Vapi-Patient-Lookup"):
         clinical_endpoint = f"{DASHBOARD_URL}/api/clinical/patient-lookup"
-    elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
+    elif name in ("save_appointment", "Vapi-save-appointment", "save_clinic_appointment"):
         clinical_endpoint = f"{DASHBOARD_URL}/api/clinical/save-appointment"
 
     if clinical_endpoint:
@@ -130,12 +130,14 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
                 "Authorization": f"Bearer {WEBHOOK_SECRET}",
                 "Content-Type": "application/json"
             }
+            payload = dict(args_dict)
+            payload["name"] = name
             with httpx.Client(timeout=4.0) as client:
-                res = client.post(clinical_endpoint, json=args_dict, headers=headers)
+                res = client.post(clinical_endpoint, json=payload, headers=headers)
                 if res.status_code == 200:
                     data = res.json()
                     logger.info("Internal clinical API response for %s: %s", name, data)
-                    if name in ("Vapi-save-appointment", "save_clinic_appointment"):
+                    if name in ("save_appointment", "Vapi-save-appointment", "save_clinic_appointment"):
                         try:
                             send_receptionist_booking_email(args_dict)
                         except Exception as em:
@@ -146,7 +148,7 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
             logger.warning("Could not reach internal clinical API (%s): %s - falling back to local handler", clinical_endpoint, e)
 
     # 2. Local Fallback handlers (in-memory mock DB)
-    if name in ("vapi-check-availability", "check_clinic_availability"):
+    if name in ("check_availability", "vapi-check-availability", "check_clinic_availability"):
         date_str = args_dict.get("appointment_date", "")
         time_str = args_dict.get("appointment_time", "").strip()
 
@@ -167,14 +169,14 @@ def execute_tool(name: str, args_dict: dict, state: dict | None = None) -> dict:
         
         return _finish({"status": "available", "appointment_date": date_str, "appointment_time": time_str})
 
-    elif name in ("Vapi-Patient-Lookup", "lookup_patient"):
+    elif name in ("patient_lookup", "lookup_patient", "Vapi-Patient-Lookup"):
         phone = "".join(filter(str.isdigit, args_dict.get("phone", "")))
         patient = PATIENT_DB.get(phone)
         if patient:
             return _finish({"found": True, "patient": patient})
         return _finish({"found": False, "message": "No matching record found for this phone number."})
 
-    elif name in ("Vapi-save-appointment", "save_clinic_appointment"):
+    elif name in ("save_appointment", "Vapi-save-appointment", "save_clinic_appointment"):
         date_str = args_dict.get("appointment_date", "")
         time_str = args_dict.get("appointment_time", "").strip()
         slot_key = f"{date_str}@{time_str.lower()}"
@@ -204,11 +206,11 @@ def allowed_tools(state: dict | None = None, all_tools: list = TOOL_DEFINITIONS)
         return None
     tools = []
     if state.get("patient_type") == "existing" and state.get("phone"):
-        tools.extend([t for t in all_tools if t["function"]["name"] == "Vapi-Patient-Lookup"])
+        tools.extend([t for t in all_tools if t["function"]["name"] in ("patient_lookup", "lookup_patient", "Vapi-Patient-Lookup")])
     if state.get("complaint"):
-        tools.extend([t for t in all_tools if t["function"]["name"] == "vapi-check-availability"])
+        tools.extend([t for t in all_tools if t["function"]["name"] in ("check_availability", "vapi-check-availability")])
     if state.get("insurance"):
-        tools.extend([t for t in all_tools if t["function"]["name"] == "Vapi-save-appointment"])
+        tools.extend([t for t in all_tools if t["function"]["name"] in ("save_appointment", "Vapi-save-appointment")])
         tools.extend([t for t in all_tools if t["function"]["name"] == "end_after_reception"])
     return tools if tools else None
 

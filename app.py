@@ -433,7 +433,7 @@ def build_twilio_agent_settings() -> dict:
                 "prompt": get_system_prompt(),
                 "functions": [
                     {
-                        "name": "vapi-check-availability",
+                        "name": "check_availability",
                         "description": "Checks clinic availability for an appointment date and time. Invoke immediately when the caller specifies a preferred date and time.",
                         "parameters": {
                             "type": "object",
@@ -445,7 +445,7 @@ def build_twilio_agent_settings() -> dict:
                         }
                     },
                     {
-                        "name": "Vapi-Patient-Lookup",
+                        "name": "patient_lookup",
                         "description": "Looks up returning patient record using digits-only phone number. Invoke immediately when an existing patient provides their phone number.",
                         "parameters": {
                             "type": "object",
@@ -456,7 +456,7 @@ def build_twilio_agent_settings() -> dict:
                         }
                     },
                     {
-                        "name": "Vapi-save-appointment",
+                        "name": "save_appointment",
                         "description": "Saves booked appointment in clinic system. Invoke immediately after slot and insurance confirmation to finalize booking.",
                         "parameters": {
                             "type": "object",
@@ -611,7 +611,7 @@ async def media_stream(websocket: WebSocket):
                             result = execute_tool(fn_name, fn_args)
                             fn_duration_ms = int((time.time() - t_start) * 1000)
 
-                            if fn_name == "Vapi-save-appointment":
+                            if fn_name in ("save_appointment", "Vapi-save-appointment"):
                                 saved_booking = fn_args
 
                             # Telemetry Webhook: Tool Event
