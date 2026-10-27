@@ -201,7 +201,13 @@ async def run_call():
     import inspect
     sig = inspect.signature(websockets.connect)
     hdr_key = "additional_headers" if "additional_headers" in sig.parameters else "extra_headers"
-    connect_kwargs = {hdr_key: headers, "family": socket.AF_INET}
+    connect_kwargs = {
+        hdr_key: headers,
+        "family": socket.AF_INET,
+        "open_timeout": 30,
+        "ping_interval": 20,
+        "ping_timeout": 20
+    }
 
     stop_event = asyncio.Event()
     call_id = f"mic_{uuid.uuid4().hex[:8]}"
@@ -234,7 +240,20 @@ async def run_call():
         "startedAt": datetime.now(timezone.utc).isoformat(),
     }))
 
-    async with websockets.connect(DEEPGRAM_AGENT_URL, **connect_kwargs) as ws:
+    # Resilient connection with automatic retry for network jitter
+    ws = None
+    for attempt in range(1, 4):
+        try:
+            ws = await websockets.connect(DEEPGRAM_AGENT_URL, **connect_kwargs)
+            break
+        except Exception as conn_err:
+            if attempt < 3:
+                print(f"[Connecting] Handshake slow ({conn_err}), retrying attempt {attempt + 1}/3...")
+                await asyncio.sleep(1.0)
+            else:
+                raise conn_err
+
+    async with ws:
         # 1. Send Agent Settings
         settings = build_agent_settings()
         await ws.send(json.dumps(settings))

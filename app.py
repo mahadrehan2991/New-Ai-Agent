@@ -646,7 +646,13 @@ async def media_stream(websocket: WebSocket):
         import inspect
         sig = inspect.signature(websockets.connect)
         hdr_key = "additional_headers" if "additional_headers" in sig.parameters else "extra_headers"
-        connect_opts = {hdr_key: headers, "family": socket.AF_INET}
+        connect_opts = {
+            hdr_key: headers,
+            "family": socket.AF_INET,
+            "open_timeout": 30,
+            "ping_interval": 20,
+            "ping_timeout": 20
+        }
         async with websockets.connect(dg_url, **connect_opts) as deepgram_ws:
             dg_socket = deepgram_ws
             settings = build_twilio_agent_settings()
